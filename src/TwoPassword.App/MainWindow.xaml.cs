@@ -230,7 +230,7 @@ public partial class MainWindow : Window
         var extension = directory ? "" : Path.GetExtension(path);
         for (var i = 2; i < 10000; i++)
         {
-            var candidate = Path.Combine(parent, stem + " (" + i + "" + extension);
+            var candidate = Path.Combine(parent, stem + " (" + i + ")" + extension);
             if (!File.Exists(candidate) && !Directory.Exists(candidate)) return candidate;
         }
         throw new IOException(L("无法选择空闲的输出名称，请手动指定新的路径。"));
@@ -258,7 +258,7 @@ public partial class MainWindow : Window
         var extension = Path.GetExtension(path);
         for (var index = 2; index < 10000; index++)
         {
-            var candidate = Path.Combine(parent, stem + " (" + index + "" + extension);
+            var candidate = Path.Combine(parent, stem + " (" + index + ")" + extension);
             if (!PackageOutputCollision(candidate)) return candidate;
         }
         throw new IOException(L("无法选择空闲的输出名称，请手动指定新的路径。"));

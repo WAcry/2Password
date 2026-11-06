@@ -289,11 +289,11 @@ internal static class Par2Metadata
     private static string FullPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || path.StartsWith(@"\\.\", StringComparison.Ordinal) ||
-            path.StartsWith(@"\??\", StringComparison.Ordinal)) throw Unsafe("不支持空路径或设备路径。");
+            path.StartsWith(@"\??\", StringComparison.Ordinal)) throw Unsafe(Text.Get("不支持空路径或设备路径。"));
         if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)) path = @"\\" + path[8..];
         else if (path.StartsWith(@"\\?\", StringComparison.Ordinal)) path = path[4..];
         string full = Path.GetFullPath(path);
-        if (full.Length >= 32700 || full.IndexOf(':', 2) >= 0) throw Unsafe("恢复文件路径过长或包含备用数据流。");
+        if (full.Length >= 32700 || full.IndexOf(':', 2) >= 0) throw Unsafe(Text.Get("恢复文件路径过长或包含备用数据流。"));
         return full;
     }
 
@@ -310,7 +310,7 @@ internal static class Par2Metadata
         while (current is not null)
         {
             if ((File.GetAttributes(Extended(current)) & FileAttributes.ReparsePoint) != 0)
-                throw Unsafe("恢复路径不能包含符号链接、联接点或其他重解析点。");
+                throw Unsafe(Text.Get("恢复路径不能包含符号链接、联接点或其他重解析点。"));
             current = Path.GetDirectoryName(current);
         }
     }

@@ -60,6 +60,8 @@ Each block is authenticated before its plaintext reaches decompression and archi
 
 The visible header reveals the format version, password-slot count, compression selection, file/directory counts, and declared aggregate byte count. Physical file size is also visible. Filenames, directory names, and file contents are encrypted. `Inspect` is a structural inspection, not password verification or complete authentication.
 
+The outer EXE, `.2pw`, and PAR2 filenames are also visible. The GUI suggests an output name based on the source name, so encryption of names inside the archive does not conceal the chosen package filename. Choose a neutral output name when that label is sensitive.
+
 ## Paths, encoding, and source consistency
 
 Windows treats filenames as Unicode character sequences. The application does not convert names through a local code page or normalize them. For example, `café.txt` and a name containing `e` followed by a combining accent remain distinct.

@@ -469,9 +469,9 @@ public static class RecoveryService
     {
         if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)) path = @"\\" + path[8..];
         else if (path.StartsWith(@"\\?\", StringComparison.Ordinal)) path = path[4..];
-        if (path.StartsWith(@"\\.\", StringComparison.Ordinal) || path.StartsWith(@"\??\", StringComparison.Ordinal)) throw new IOException("不支持设备路径。");
+        if (path.StartsWith(@"\\.\", StringComparison.Ordinal) || path.StartsWith(@"\??\", StringComparison.Ordinal)) throw new IOException(Text.Get("不支持设备路径。"));
         string full = Path.GetFullPath(path);
-        if (full.Length > 32700 || full.IndexOf(':', 2) >= 0) throw new IOException("路径过长或包含备用数据流。");
+        if (full.Length > 32700 || full.IndexOf(':', 2) >= 0) throw new IOException(Text.Get("路径过长或包含备用数据流。"));
         return full;
     }
 
@@ -490,8 +490,8 @@ public static class RecoveryService
             try
             {
                 var attributes = File.GetAttributes(Extended(current));
-                if ((attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("恢复操作不支持符号链接或联接点。");
-                if (!leaf && (attributes & FileAttributes.Directory) == 0) throw new IOException("父路径不是文件夹。");
+                if ((attributes & FileAttributes.ReparsePoint) != 0) throw new IOException(Text.Get("恢复操作不支持符号链接或联接点。"));
+                if (!leaf && (attributes & FileAttributes.Directory) == 0) throw new IOException(Text.Get("父路径不是文件夹。"));
             }
             catch (FileNotFoundException) when (leaf && allowMissingLeaf) { }
             catch (DirectoryNotFoundException) when (leaf && allowMissingLeaf) { }
