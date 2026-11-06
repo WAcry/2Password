@@ -2,7 +2,7 @@
 
 本文件记录 2026-11-06 在 Windows x64 上执行的可复现验证，以及发布流水线的检查范围。所有测试均使用生成的合成文件和测试专用密码。测试代码、独立格式解析器和构建脚本保存在仓库中；原始 JSON 报告位于本地 `artifacts/`，常规报告也由 GitHub Actions 保留为 `verification-reports` 构建产物。
 
-这些结果是实现与回归证据，不等同于外部密码学安全审计。密码学假设、文件系统限制和威胁模型见 [SECURITY.md](SECURITY.md) / [SECURITY.en.md](SECURITY.en.md)。
+密码学假设、文件系统限制和威胁模型见 [SECURITY.md](SECURITY.md) / [SECURITY.en.md](SECURITY.en.md)。
 
 ## 环境与重现
 
@@ -29,9 +29,9 @@ pwsh -File scripts/Test-Installer.ps1
 | 真实 PAR2 与按需恢复 | 24 | 0 |
 | 共享语言资源与跨语言操作 | 15 | 0 |
 | 真实自包含 EXE / CLI | 11 | 0 |
-| 中文安装、英文替换与卸载 | 48 | 0 |
+| 中文安装、英文替换与卸载 | 52 | 0 |
 
-共享语言验证覆盖 242 对资源和 241 个实际 `Text.Get` 源代码键；App 自有界面另有 251 对资源。
+共享语言验证覆盖 242 对资源和 241 个实际 `Text.Get` 源代码键；App 自有界面另有 156 对资源。
 
 ## 常规安全与还原验证
 
@@ -41,7 +41,7 @@ pwsh -File scripts/Test-Installer.ps1
 | --- | --- |
 | 密码学原语 | RFC 9106 Argon2id 标准向量；公开 AES-256-GCM 向量与错误标签拒绝 |
 | 独立密码 | 多个密码分别还原同一完整文件树；第 16 个密码槽；错误、空、超长及非法 Unicode 密码 |
-| 独立格式检查 | 测试代码独立编写的容器编码器和解码器，不仅调用生产代码做往返 |
+| 独立格式检查 | 测试代码独立编写的容器编码器和解码器，与生产代码交叉验证 |
 | 名称与内容 | 中文、日文、阿拉伯文、emoji、NFC/NFD 区分，超过 1,000 字符路径；逐文件 SHA-256、空目录和空文件 |
 | 压缩 | Zstd、Brotli、不压缩；截断、尾随数据、串联帧、错误长度、过大窗口、异常帧和解压输出边界 |
 | 认证结构 | 内容、标签、长度、顺序、结束标记篡改；截断、重复块和多余块；未使用密码槽损坏 |
@@ -52,11 +52,11 @@ pwsh -File scripts/Test-Installer.ps1
 | PAR2 元数据 | 21 个独立恶意输入用例，检查路径、描述符、Unicode 扩展、不同恢复集混用、校验与块数量限制 |
 | 工作区权限 | 22 个用例，包含真实 NTFS 权限及子目录继承、宽松父目录、并发创建和原始 ACL 的恶意构造；不支持持久 ACL 的能力策略明确拒绝 |
 
-权限测试读回真实 NTFS 安全描述符，并检查陌生主体、空或未保护 DACL、错误所有者、回调/对象 ACE、错误继承与权限范围。FAT/exFAT 的拒绝策略通过能力标志分支验证，未声称挂载实际 FAT/exFAT 介质完成测试。
+权限测试读回真实 NTFS 安全描述符，并检查陌生主体、空或未保护 DACL、错误所有者、回调/对象 ACE、错误继承与权限范围。FAT/exFAT 的拒绝逻辑用模拟的能力标志验证，没有挂载真实的 FAT/exFAT 介质。
 
 ## 实际 PAR2 与按需修复
 
-`tests/TwoPassword.Recovery.Tests` 使用内嵌的真实 `par2cmdline-turbo 1.5.0` 进程，而非模拟修复器。当前测试包含以下行为：
+`tests/TwoPassword.Recovery.Tests` 调用内嵌的真实 `par2cmdline-turbo 1.5.0` 进程，覆盖以下行为：
 
 - 对含中文、日文和 emoji 的文件名生成并校验真实恢复记录。
 - 健康包直接解包，恢复进度回调保持为空，未启动 PAR2 扫描。
@@ -86,7 +86,7 @@ pwsh -File scripts/Test-Installer.ps1
 
 中英文命令行帮助、报告中的中英文密码错误、复制后仍可使用中文卫星资源，也在该脚本中检查。第二个密码包含前导 U+FEFF、前导和尾随空格；输入末尾附加 CRLF，验证程序只移除输入行结束符，保留密码本身。
 
-测试运行在当前 Windows 主机的隔离进程中，未将其描述为全新 Windows 虚拟机测试。独立运行的证据包括实际启动和运行时跟踪，而不是仅检查发布参数。
+测试在本机的隔离进程中运行，通过实际启动和运行时跟踪确认 EXE 不依赖已安装的 .NET。
 
 ## 中英文资源
 
@@ -100,11 +100,13 @@ pwsh -File scripts/Test-Installer.ps1
 
 中英文界面在 125% DPI 下用 UI Automation 驱动实际检查，浅色和深色主题各一遍：按打开的文件类型进入加密、解密或修复，最小窗口 520×500 下的滚动，最大化边距，密码行内校验（长度、两次不一致），错误密码提示，以及加密、解密、修复的进度页与完成页。窗口截图保存在 `assets/screenshots/`，仅包含空字段。
 
+提权和右键菜单同样实际操作过。加密或解密到 `C:\Program Files` 时，提示旁出现“以管理员身份重试”；点击并通过 UAC 后，新的管理员窗口保留源文件和目标位置，在 Program Files 中完成加密和解密，标题显示“管理员”，菜单不再提供“以管理员身份运行”。管理员窗口能接收从普通权限资源管理器拖入的文件。开启右键菜单后，在资源管理器中检查了普通文件、文件夹、`.2pw` 和 `.par2` 各自显示的菜单项，关闭后注册表项全部移除。
+
 ## 安装、升级和卸载
 
 WiX 构建使用 `-wx` 将警告视为错误。`scripts/Test-Installer.ps1` 对本项目的产品标识执行真实 MSI 安装，不调用 `Win32_Product`，不扫描或修复其他软件。
 
-本地双语安装验证完成 **48 项检查**，中文安装、同版本英文替换、卸载三个过程退出码均为 `0`。检查包括：
+本地双语安装验证完成 **52 项检查**，中文安装、同版本英文替换、卸载三个过程退出码均为 `0`。检查包括：
 
 - MSI 产品身份、当前用户安装范围、中英文向导标准文本和自定义文本。
 - 含中文、日文和空格的自定义安装目录。
@@ -112,11 +114,12 @@ WiX 构建使用 `-wx` 将警告视为错误。`scripts/Test-Installer.ps1` 对�
 - 英文版本替换中文版本时记住安装目录，只留下一个已注册产品。
 - 开始菜单快捷方式、HKCU 标记、卸载登记与移除。
 - 用户在安装目录新增的文件卸载后仍然保留。
+- 安装的程序用 `--explorer-menu on` 写入的资源管理器右键菜单指向安装目录，英文替换后仍然保留，卸载时被移除。
 - 项目源文件哨兵哈希在测试前后保持一致。
 
 快捷方式校验使用 Windows 卷标识及完整 128 位文件标识，确认实际指向安装的程序及工作目录，并要求无附加参数；原始路径、解析路径和标识都写入诊断报告。真实 NTFS 8.3 别名被正确识别为同一对象，不同文件或丢失目标仍被拒绝。
 
-脚本发现已有用户安装时会拒绝覆盖，以免把真实安装当成临时测试环境。
+脚本发现已有用户安装或 2Password 右键菜单项时会拒绝覆盖，以免把真实安装当成临时测试环境。
 
 ## 大文件与资源使用
 
@@ -126,7 +129,7 @@ WiX 构建使用 `-wx` 将警告视为错误。`scripts/Test-Installer.ps1` 对�
 pwsh -File scripts/Test-LargeFiles.ps1
 ```
 
-建议预留至少约 30 GiB 空间。测试构造稀疏源文件，在 2/4/8 GiB 边界及末尾放置非零随机标记，随后实际读取、加密和解包。未压缩测试产生了真实超过 4 GiB 的密文数据文件，不只检查长度字段。
+建议预留至少约 30 GiB 空间。测试构造稀疏源文件，在 2/4/8 GiB 边界及末尾放置非零随机标记，随后实际读取、加密和解包。未压缩测试实际写出了超过 4 GiB 的密文数据文件。
 
 2026-11-06 本地实际记录：
 
@@ -135,9 +138,9 @@ pwsh -File scripts/Test-LargeFiles.ps1
 | 不压缩 + 自动布局 | 4,423,942,144 | 66,674,733 字节启动器 + 4,424,069,228 字节 `.2pw` | 4.78 秒 | 6.09 秒 | 源和还原长度、完整 SHA-256 相同 |
 | Zstd + 自动布局 | 8,589,934,715 | 67,347,338 字节嵌入式 EXE | 6.48 秒 | 5.70 秒 | 超过 8 GiB 的 PAX 文件长度与完整 SHA-256 相同 |
 
-整个测试进程观察到的峰值工作集为 **357,687,296 字节（约 341 MiB）**，峰值托管内存为 207,750,824 字节。这里的计时受本机存储、缓存、稀疏文件和高可压缩数据影响，不能当作任意文件或任意硬盘的吞吐承诺。
+整个测试进程观察到的峰值工作集为 **357,687,296 字节（约 341 MiB）**，峰值托管内存为 207,750,824 字节。计时受本机存储、缓存、稀疏文件和高压缩率数据影响，只反映这组数据在这台机器上的表现。
 
-大文件用例调用生产 Core API，并使用当时发布版 EXE 的快照作为模板；它们没有直接运行这些大包。独立 EXE 的真实启动由上一节单独验证。后续界面语言改动不改变容器格式或加密的数据处理方式。
+大文件用例调用生产 Core API，用当时发布版 EXE 的快照作模板，没有直接运行这些大包；独立 EXE 的实际启动见上一节。之后的界面改动没有改变容器格式和数据处理。
 
 ### Windows 加载器边界
 
@@ -153,10 +156,10 @@ pwsh -File scripts/Test-LargeFiles.ps1
 
 ## 验证范围
 
-已验证的结果不能扩展为未测试的断言：没有声称恢复任何分布的全部损坏、支持全部 NTFS 元数据、抗同用户恶意进程、提供 VSS 一致快照，或在断电时实现跨多文件的事务。私有目录和认证保护正常操作中的中间结果；管理员权限、恶意内核、崩溃转储与系统备份等边界详见安全文档。
+以下情形没有测试，也不在设计目标内：任意分布的损坏都能恢复、保留全部 NTFS 元数据、防御同一用户下的恶意进程、VSS 一致快照、断电时多个文件的事务提交。管理员权限、恶意内核、崩溃转储和系统备份等边界见安全文档。
 
-依赖版本、NuGet 内容哈希、PAR2 二进制及源码摘要固定在仓库中。NuGet 漏洞列表检查未报告已知易受攻击的包；该检查不是实现代码审计。发布文件使用 SHA-256 校验，当前未配置 Authenticode 签名证书。
+依赖版本、NuGet 内容哈希、PAR2 二进制及源码摘要固定在仓库中。NuGet 漏洞检查没有报告已知漏洞的包。发布文件用 SHA-256 校验，没有 Authenticode 签名。
 
 ---
 
-**English overview.** The repository includes reproducible adversarial tests, real PAR2 recovery tests, localization checks, actual copied self-extractor execution, and install/upgrade/uninstall tests. The primary suite passed 187 cases with no failures or skips, including 22 workspace-permission regressions. Local large-file cases processed 4,423,942,144-byte uncompressed data and an 8,589,934,715-byte PAX file, comparing full SHA-256 hashes after extraction. The approximately 341 MiB observed peak working set and timing figures describe these specific synthetic fixtures on one Windows host. They are not general performance guarantees or a substitute for an external security audit. Regular suites and installer/standalone checks gate GitHub Releases; large-file tests are available separately.
+**English overview.** The repository includes reproducible adversarial tests, real PAR2 recovery tests, localization checks, actual copied self-extractor execution, and install/upgrade/uninstall tests. The primary suite passed 187 cases with no failures or skips, including 22 workspace-permission regressions. Local large-file cases processed 4,423,942,144-byte uncompressed data and an 8,589,934,715-byte PAX file, comparing full SHA-256 hashes after extraction. The approximately 341 MiB observed peak working set and timing figures describe these synthetic fixtures on one Windows host. Regular suites and installer/standalone checks gate GitHub Releases; large-file tests are available separately.

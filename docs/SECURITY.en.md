@@ -1,14 +1,12 @@
-# 2Password security design and limitations
+# 2Password security design
 
 [简体中文](SECURITY.md) · English
 
-This document distinguishes design goals, implementation measures, and guarantees the project does not make. Passing automated tests is not an independent cryptographic audit.
-
 ## Protection goals
 
-The threat model permits an attacker to obtain an encrypted package, know the complete source code, modify any package bytes, and make unlimited offline password guesses. With sufficiently strong passwords, a trusted executable, and an uncompromised operating system, the attacker should not be able to read file contents or filenames. Damaged content, altered password slots, reordered records, truncation, and unauthorized trailing data must fail rather than be reported as a successful restoration.
+The threat model permits an attacker to obtain an encrypted package, know the complete source code, modify any package bytes, and make unlimited offline password guesses. With sufficiently strong passwords, a trusted executable, and an uncompromised operating system, the attacker cannot read file contents or filenames. Damaged content, altered password slots, reordered records, truncation, and unauthorized trailing data make decryption fail.
 
-Anyone holding **one valid password is authorized to read all contents**. Multiple passwords are independent access keys, not secret shares, threshold decryption, or multiple factors that must be supplied together.
+Anyone holding **one valid password can read all contents**. Each password works on its own; none of them has to be combined with another.
 
 ## Established implementations
 
@@ -18,7 +16,7 @@ Anyone holding **one valid password is authorized to read all contents**. Multip
 - `ZstdSharp.Port` supplies the default Zstandard compression. Optional Brotli uses .NET `BrotliEncoder` / `BrotliDecoder`. Blocks are compressed independently; no compression is also supported.
 - The optional recovery component is bundled `par2cmdline-turbo 1.5.0`, checked against a pinned SHA-256. Its corresponding source and GPL license text are distributed with the application.
 
-Project-specific code combines these components into a multiple-password envelope, streaming authenticated records, filesystem restrictions, and the user interface. These composition and parsing decisions still require review; established primitives do not automatically establish the security of a new protocol.
+The multiple-password envelope, streaming authenticated records, filesystem handling, and user interface are this project's own code, and that is where review should focus.
 
 ## Independent passwords
 
@@ -40,7 +38,7 @@ Container format version 2 fixes the following parameters:
 
 These Argon2id parameters follow the lower-memory recommended option in [RFC 9106](https://www.rfc-editor.org/rfc/rfc9106.html). The format version fixes the cost parameters; an untrusted package cannot request arbitrary KDF memory or iteration counts.
 
-A valid password reveals the content key, but the content key does not directly reveal the other passwords. Offline dictionary attacks against those passwords remain possible. **The weakest valid password determines the package's practical confidentiality.** Adding a weak password weakens protection for the whole package. Access to already distributed copies cannot be revoked by creating a new package or changing passwords elsewhere.
+A valid password reveals the content key, but the content key does not reveal the other passwords. Those passwords can still be attacked with offline dictionary guessing. **The weakest valid password determines the package's practical confidentiality**, so adding a weak password weakens the whole package. Copies already sent cannot be revoked.
 
 Passwords retain their exact Unicode character sequence. The application does not trim whitespace, change case, or normalize NFC/NFD. Invalid Unicode, empty passwords, duplicates, and oversized input are rejected.
 
@@ -52,13 +50,13 @@ The nonce combines a random prefix with an increasing 64-bit record number; ever
 
 Raw and encoded lengths are bounded before processing. Decompression writes into caller-allocated buffers rather than allocating memory according to attacker-controlled frame declarations. Zstd must contain exactly one standard frame, use no external dictionary, have a window no larger than 1 MiB, and declare exactly the authenticated raw size. Brotli must consume the entire encoded block and produce exactly the declared number of bytes. Additional compressed frames, trailing bytes, and size mismatches are rejected.
 
-The logical key-slot/container header has three fixed-size physical replicas. The locating footer also has three replicas. Each copy has a SHA-256 checksum. Damaged copies can be ignored, but valid copies must agree. These checksums detect damage; they do not replace AES-GCM authentication. Losing every replica still requires PAR2 or an original backup. File-level directory information is inside the authenticated PAX stream and is additionally covered by optional PAR2.
+The logical key-slot/container header has three fixed-size physical replicas. The locating footer also has three replicas. Each copy has a SHA-256 checksum. Damaged copies are ignored, and valid copies must agree. The checksums only pick an intact replica; AES-GCM authentication decides whether the content is genuine. If every replica is damaged, PAR2 or an original backup is needed. File-level directory information is inside the authenticated PAX stream and is additionally covered by optional PAR2.
 
-A dedicated authenticated zero-length final record is mandatory. Extraction validates this record, exact payload boundaries, and the actual end of the file before publishing output. Opening a password slot alone does not establish the integrity of the package.
+A dedicated authenticated zero-length final record is mandatory. Extraction validates this record, exact payload boundaries, and the actual end of the file before publishing output.
 
 Each block is authenticated before its plaintext reaches decompression and archive parsing. The parser treats names, declared lengths, entry counts, and archive types as untrusted. Lengths and counts have limits, actual totals must match declarations, and unknown format versions are rejected.
 
-The visible header reveals the format version, password-slot count, compression selection, file/directory counts, and declared aggregate byte count. Physical file size is also visible. Filenames, directory names, and file contents are encrypted. `Inspect` is a structural inspection, not password verification or complete authentication.
+The visible header reveals the format version, password-slot count, compression selection, file/directory counts, and declared aggregate byte count. Physical file size is also visible. Filenames, directory names, and file contents are encrypted. `Inspect` reads format information only; it checks neither the password nor the content.
 
 The outer EXE, `.2pw`, and PAR2 filenames are also visible. The GUI suggests an output name based on the source name, so encryption of names inside the archive does not conceal the chosen package filename. Choose a neutral output name when that label is sensitive.
 
@@ -66,11 +64,11 @@ The outer EXE, `.2pw`, and PAR2 filenames are also visible. The GUI suggests an 
 
 Windows treats filenames as Unicode character sequences. The application does not convert names through a local code page or normalize them. For example, `café.txt` and a name containing `e` followed by a combining accent remain distinct.
 
-Filesystem access uses Unicode and extended-length paths, and the application manifest enables long-path awareness. Windows and the destination filesystem still impose total-path and component-length limits, and sufficient destination space is required. Explorer's support for very long paths differs from the underlying file APIs.
+Filesystem access uses Unicode and extended-length paths, and the application manifest enables long-path awareness. Windows and the destination filesystem still impose total-path and component-length limits, and the destination needs enough free space. Explorer's support for very long paths differs from the underlying file APIs.
 
-Extraction accepts only safe relative paths. It rejects absolute paths, drive letters, UNC paths, `..`, alternate-stream syntax, reserved device names, ambiguous names, collisions, and names ending in dots or spaces that are unsuitable for ordinary Windows directories. It does not silently rename, truncate, or replace invalid characters to continue.
+Extraction accepts only safe relative paths. It rejects absolute paths, drive letters, UNC paths, `..`, alternate-stream syntax, reserved device names, ambiguous names, collisions, and names ending in dots or spaces that are unsuitable for ordinary Windows directories. Such names cause an error; nothing is renamed to work around them.
 
-Source scanning includes hidden and system entries and never silently skips failures. The following inputs fail explicitly:
+Hidden and system entries are packaged too, and any scanning failure fails the whole operation. The following inputs cause an error:
 
 - Symbolic links, directory junctions, and other reparse points, including placeholders that may require cloud hydration.
 - NTFS alternate data streams other than the download marker `Zone.Identifier`. That marker is preserved as original bytes up to 64 KiB; larger markers are rejected.
@@ -78,9 +76,9 @@ Source scanning includes hidden and system entries and never silently skips fail
 - Entries that cannot be read, are exclusively locked, or are detected changing during packaging.
 - Names that cannot be represented unambiguously in a normal Windows destination.
 
-Ordinary file bytes, file/directory names, empty directories, supported timestamps, and common attributes are restored. The package is not a complete filesystem image: it does not preserve NTFS ACLs/owners, hard-link relationships, sparse allocation layout, short names, file IDs, audit information, or every filesystem-specific attribute. Hard-linked content can be restored as separate files, and sparse content can require additional disk space.
+Restored: file bytes, file and directory names, empty directories, supported timestamps, and common attributes. Not preserved: NTFS ACLs and owners, hard-link relationships, sparse allocation layout, short names, file IDs, audit information, and other filesystem-specific metadata. Hard-linked content is restored as separate files, and sparse content can take more disk space.
 
-Preflight and final inventory checks detect ordinary concurrent changes. They are not a VSS snapshot and do not provide a transactional snapshot across a changing directory tree or live database. Package stable source data; export a consistent application-specific backup first when necessary.
+The file inventory is compared before and after packaging, and ordinary concurrent changes cause an error. There is no VSS snapshot, so export a consistent backup of a live database with its own tools before packaging it.
 
 ## Publication, cancellation, and failures
 
@@ -88,11 +86,11 @@ During creation, the archive/compression stream goes directly into encryption wi
 
 Extraction creates a private staging directory whose ACL permits the current user and SYSTEM. Only after all authentication, path, and length checks pass is it renamed to a new destination without overwriting. A destination that already exists, or is created concurrently, causes failure and is preserved.
 
-Staging directories and PAR2 workspaces require a filesystem with persistent ACL support. The application queries volume capabilities through an actual file handle, atomically supplies a protected DACL at creation, and reads it back to verify the current user owns the directory and only that user and SYSTEM receive inheritable full control. Existing paths are neither reused nor given new permissions. FAT/exFAT destinations without persistent ACLs, providers whose capabilities cannot be queried, and directories whose strict permissions cannot be verified fail explicitly. Use local NTFS for extraction destinations and recovery workspaces. A successful ACL-setting call alone is not accepted as evidence that private access is enforced.
+Staging directories and PAR2 workspaces require a filesystem with persistent ACL support. The application queries volume capabilities through an actual file handle, atomically supplies a protected DACL at creation, and reads it back to verify the current user owns the directory and only that user and SYSTEM receive inheritable full control. Existing paths are neither reused nor given new permissions. FAT/exFAT destinations without persistent ACLs, providers whose capabilities cannot be queried, and directories whose strict permissions cannot be verified cause an error. Use local NTFS for extraction destinations and recovery workspaces.
 
-Named-stream support is also checked against the actual volume capabilities. A provider's corresponding unsupported-enumeration error is treated as absence of alternate streams only when the volume explicitly lacks named-stream support. Failure to query capabilities never silently becomes a safe result.
+Named-stream support is also checked against the actual volume capabilities. A provider's corresponding unsupported-enumeration error is treated as absence of alternate streams only when the volume explicitly lacks named-stream support. A failed capability query is treated as an error.
 
-Ordinary exceptions and cancellation trigger cleanup. Power loss, forced termination, disk damage, or lost cleanup permissions can leave temporary files or staging directories. Deleting temporary plaintext is not secure erasure; SSDs, backups, filesystem journals, and snapshots may retain copies.
+Ordinary exceptions and cancellation trigger cleanup. Power loss, forced termination, disk damage, or lost cleanup permissions can leave temporary files or staging directories. Temporary plaintext is deleted normally, so SSDs, backups, filesystem journals, and snapshots may retain copies.
 
 ## Trust boundary of a standalone EXE
 
@@ -100,11 +98,19 @@ The extraction EXE includes its runtime and does not require the recipient to in
 
 A single EXE must be smaller than 4 GiB. Larger source data can still be embedded if compression makes the final EXE fit. Detached data uses 64-bit lengths with a 16 TiB raw-content limit, subject to available space, entry counts, paths, and metadata resource limits. The reference permits only a safe sibling `.2pw` basename bound to the data container's logical-header SHA-256. It accepts no URLs, path components, or cross-directory references. The descriptor and locating footer also have three replicas.
 
-Content authentication does not establish the identity of the executable's publisher.
+Data authentication covers the encrypted content only. Whether the EXE itself can be trusted depends on where it came from.
 
 A maliciously replaced EXE can steal passwords when they are entered. Run only trusted executables and obtain release files or checksums through trusted channels. Packages supplied by third parties can be opened as data using a trusted installed application, reducing the need to execute an unfamiliar EXE.
 
-The program does not protect against malware controlling the current user session, keyloggers, administrator/kernel compromise, memory dumps, screen capture, weak passwords, or deliberate sharing of decrypted contents. Managed strings and internal KDF memory cannot receive an absolute erasure guarantee. The application clears key and byte buffers under its control where possible.
+Outside the protection scope: malware controlling the current user session, keyloggers, administrator or kernel compromise, memory dumps, screen capture, weak passwords, and deliberate sharing of decrypted contents. The application clears the key and byte buffers it controls; managed strings and the KDF library's internal memory cannot be guaranteed to be cleared.
+
+## Administrator rights and the right-click menu
+
+The app runs with normal rights. Only "Retry as administrator" or "Run as administrator" starts a new elevated process through UAC, and the old window then closes. The new process gets the interface language, theme, source and destination on its command line. Passwords are never passed on the command line and have to be entered again.
+
+Windows blocks drag and drop from normal-rights programs into elevated windows. The elevated window lets three drop messages through: `WM_DROPFILES`, `WM_COPYDATA` and `0x0049`. A dropped path only opens in the interface, as with a normal drop. Encrypting or decrypting still needs a password and a click.
+
+The right-click menu writes only to the current user's `HKCU\Software\Classes`, and its commands point at the running executable. Turning it off removes only entries that point at this executable. Uninstalling the installed version does the same cleanup.
 
 ## PAR2 recovery and processing order
 
@@ -112,15 +118,15 @@ PAR2 recovery data is generated over already encrypted EXE/data files. It does n
 
 Normal extraction uses one authenticated streaming pass without an additional full-file prescan. A password that matches no slot fails directly without launching PAR2. When container, data, or archive validation detects damage and recovery records exist, the application verifies and attempts repair on copies of the encrypted input. Successful repair is followed by a new complete authenticated extraction. Staging plaintext from the failed attempt is cleaned up, and a destination is published only after the retry succeeds. Every block is authenticated before decompression.
 
-Users can explicitly request verification before extraction or use the separate verification/repair operation. Independent compression helps contain dependency between blocks; it does not reconstruct missing data. Reconstruction comes from additional PAR2 recovery blocks.
+Users can explicitly request verification before extraction or use the separate verification/repair operation. Independent compression keeps damage confined to the affected block, and PAR2 recovery blocks reconstruct the missing data.
 
-Recovery capacity is measured in affected slices. A 10% setting does not guarantee recovery from every distribution of damage affecting 10% of bytes. Small errors spread across many slices can exhaust the available recovery blocks. Missing or damaged recovery volumes also reduce capacity. Safety preflight excludes an entire volume unless all its packets validate; partially checked files are not passed to the native program.
+Recovery capacity is measured in affected slices: 10% redundancy repairs roughly 10% of the slices. Small errors spread across many slices can use up the recovery blocks, and missing or damaged recovery volumes reduce capacity too. Safety preflight excludes an entire volume unless all its packets validate; partially checked files are not passed to the native program.
 
 Before recovery, the wrapper validates packet boundaries and MD5 values, recovery-set IDs, file IDs, filenames, and the protected file set. Only the selected EXE and its data companion, or one data file, are permitted. Traversal, alternate-stream names, reserved names, case aliases, conflicting descriptions, and Unicode filename-override extensions are rejected. Staged copies are validated again in a restricted workspace, and only validated copies may be discovered by the native tool. Repairs happen on copies; reconstructed output must pass independent length and digest checks before commit. Damaged originals are backed up.
 
-PAR2's MD5 is format-defined damage detection, not publisher authentication or cryptographic protection against deliberate replacement. A repaired payload still requires AES-GCM authentication, and the application never automatically executes a reconstructed EXE. Current recovery bounds are two protected input files, 128 recovery files, 32,768 source slices, 64 MiB per slice, and 2 TiB of protected data. These differ from the encrypted-container size limits.
+PAR2's MD5 only detects damage; protection against tampering comes from AES-GCM. A repaired payload still has to pass AES-GCM authentication, and the application never runs a reconstructed EXE automatically. Current recovery bounds are two protected input files, 128 recovery files, 32,768 source slices, 64 MiB per slice, and 2 TiB of protected data. These differ from the encrypted-container size limits.
 
-## Verification and remaining review
+## Verification and review
 
 The test project includes public cryptographic known-answer vectors, independent format decoding, per-file SHA-256 comparisons, malicious/corrupted inputs, and filesystem boundary cases:
 
@@ -128,9 +134,9 @@ The test project includes public cryptographic known-answer vectors, independent
 dotnet run --project tests/TwoPassword.Tests -c Release
 ```
 
-The report is written to the Git-ignored `artifacts/test-results.json`. Its recorded environment and pass/fail/skip outcomes are the evidence for that particular run.
+The report is written to the Git-ignored `artifacts/test-results.json` and records the environment and every test result.
 
-Public-vector checks validate dependency/API usage and do not constitute NIST CAVP certification. The current version has not undergone an independent external cryptographic or penetration-test audit. Future review should focus on envelope composition, archive boundaries, filesystem races, resource limits, update/signing trust, and failure recovery.
+Public-vector checks validate how the dependencies and APIs are used. The project has not had a third-party cryptographic audit or penetration test. Review should focus on envelope composition, archive boundaries, filesystem races, resource limits, update and signing trust, and failure recovery.
 
 ## Primary references
 
