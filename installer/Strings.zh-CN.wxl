@@ -1,0 +1,6 @@
+<WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="zh-CN" Codepage="936">
+  <String Id="PackageLanguage" Value="2052" />
+  <String Id="DowngradeErrorMessage" Value="已安装更新版本的 2Password。请先卸载较新的版本。" />
+  <String Id="Windows64RequiredMessage" Value="2Password 需要 64 位 Windows。" />
+  <String Id="ShortcutDescription" Value="多密码加密与独立解包" />
+</WixLocalization>

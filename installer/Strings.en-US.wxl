@@ -1,0 +1,6 @@
+<WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="en-US" Codepage="1252">
+  <String Id="PackageLanguage" Value="1033" />
+  <String Id="DowngradeErrorMessage" Value="A newer version of 2Password is already installed. Uninstall the newer version before continuing." />
+  <String Id="Windows64RequiredMessage" Value="2Password requires 64-bit Windows." />
+  <String Id="ShortcutDescription" Value="Multi-password encryption and standalone extraction" />
+</WixLocalization>

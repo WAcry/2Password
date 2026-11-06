@@ -1,0 +1,62 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="2Password" Manufacturer="David Ziyuan Zhang"
+           Version="$(var.AppVersion)" Language="!(loc.PackageLanguage)"
+           UpgradeCode="34DC4355-F21B-4BEA-9EE8-3318C906D5B8"
+           Scope="perUser" InstallerVersion="500" Compressed="yes">
+    <MajorUpgrade DowngradeErrorMessage="!(loc.DowngradeErrorMessage)"
+                  IgnoreLanguage="yes" AllowSameVersionUpgrades="yes"
+                  Schedule="afterInstallInitialize" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Launch Condition="Installed OR VersionNT64" Message="!(loc.Windows64RequiredMessage)" />
+    <Icon Id="AppIcon" SourceFile="$(var.RepoRoot)\assets\app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/WAcry/2Password" />
+    <!-- Per-user components use HKCU key paths. Remember the chosen directory
+         so repair, upgrade, and uninstall resolve files outside the default. -->
+    <Property Id="INSTALLFOLDER" Secure="yes">
+      <RegistrySearch Id="PreviousInstallFolder" Root="HKCU" Key="Software\2Password"
+                      Name="InstallLocation" Type="raw" />
+    </Property>
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="2Password">
+          <Component Id="Application" Guid="11B8A97F-FC28-4AA1-994A-4E85E742ED56">
+            <File Id="MainExe" Source="$(var.PublishDir)\2Password.exe" />
+            <RegistryValue Root="HKCU" Key="Software\2Password" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+            <RegistryValue Root="HKCU" Key="Software\2Password" Name="InstallLocation" Type="string" Value="[INSTALLFOLDER]" />
+            <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+          </Component>
+          <Component Id="Documentation" Guid="2235B167-41B8-4809-A9EA-782F1CDAF64E">
+            <File Id="Readme" Source="$(var.RepoRoot)\README.md" />
+            <File Id="ReadmeEnglish" Source="$(var.RepoRoot)\README.en.md" />
+            <File Id="ThirdParty" Source="$(var.RepoRoot)\THIRD-PARTY-NOTICES.txt" />
+            <RegistryValue Root="HKCU" Key="Software\2Password" Name="Documentation" Type="integer" Value="1" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppProgramMenuFolder" Name="2Password">
+        <Component Id="StartMenu" Guid="3AFF8E44-4EFC-4F42-82CA-A282D2F71FE0">
+          <Shortcut Id="StartMenuShortcut" Name="2Password" Description="!(loc.ShortcutDescription)" Target="[#MainExe]" WorkingDirectory="INSTALLFOLDER" Icon="AppIcon" />
+          <RemoveFolder Id="RemoveStartMenuFolder" On="uninstall" />
+          <RegistryValue Root="HKCU" Key="Software\2Password" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Complete" Title="2Password" Level="1">
+      <ComponentRef Id="Application" />
+      <ComponentRef Id="Documentation" />
+      <ComponentRef Id="StartMenu" />
+    </Feature>
+
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.RepoRoot)\installer\Welcome.rtf" />
+    <UI>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Order="2" Condition="NOT Installed" />
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2" Condition="NOT Installed" />
+    </UI>
+  </Package>
+</Wix>

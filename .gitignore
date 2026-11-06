@@ -1,0 +1,15 @@
+# Build products and private working data
+**/bin/
+**/obj/
+artifacts/
+.tools/
+.wix/
+.vs/
+.idea/
+*.user
+*.suo
+*.tmp
+*.partial
+*.pfx
+*.snk
+TestResults/

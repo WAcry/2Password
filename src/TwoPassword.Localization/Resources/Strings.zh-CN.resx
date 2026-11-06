@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Brotli 块被截断、包含尾随数据，或解压长度不匹配。" xml:space="preserve"><value>Brotli 块被截断、包含尾随数据，或解压长度不匹配。</value></data>
+  <data name="Expected a SHA-256 header hash." xml:space="preserve"><value>需要 SHA-256 格式的包头摘要。</value></data>
+  <data name="PAR2 内存不足。" xml:space="preserve"><value>PAR2 内存不足。</value></data>
+  <data name="PAR2 切片校验表大小无效。" xml:space="preserve"><value>PAR2 切片校验表大小无效。</value></data>
+  <data name="PAR2 创建者元数据过大。" xml:space="preserve"><value>PAR2 创建者元数据过大。</value></data>
+  <data name="PAR2 包标记无效。" xml:space="preserve"><value>PAR2 包标记无效。</value></data>
+  <data name="PAR2 包校验失败。" xml:space="preserve"><value>PAR2 包校验失败。</value></data>
+  <data name="PAR2 包被截断。" xml:space="preserve"><value>PAR2 包被截断。</value></data>
+  <data name="PAR2 包长度无效或过大。" xml:space="preserve"><value>PAR2 包长度无效或过大。</value></data>
+  <data name="PAR2 工具校验失败，已停止。" xml:space="preserve"><value>PAR2 工具校验失败，已停止。</value></data>
+  <data name="PAR2 恢复块大小无效。" xml:space="preserve"><value>PAR2 恢复块大小无效。</value></data>
+  <data name="PAR2 恢复块编号超出范围。" xml:space="preserve"><value>PAR2 恢复块编号超出范围。</value></data>
+  <data name="PAR2 恢复组件需要 Windows x64。" xml:space="preserve"><value>PAR2 恢复组件需要 Windows x64。</value></data>
+  <data name="PAR2 文件 ID 与文件名和数据描述不一致。" xml:space="preserve"><value>PAR2 文件 ID 与文件名和数据描述不一致。</value></data>
+  <data name="PAR2 文件名包含无效 UTF-8。" xml:space="preserve"><value>PAR2 文件名包含无效 UTF-8。</value></data>
+  <data name="PAR2 文件没有有效数据包。" xml:space="preserve"><value>PAR2 文件没有有效数据包。</value></data>
+  <data name="PAR2 文件被截断。" xml:space="preserve"><value>PAR2 文件被截断。</value></data>
+  <data name="PAR2 返回 {0}。{1}" xml:space="preserve"><value>PAR2 返回 {0}。{1}</value></data>
+  <data name="PAR2 返回成功，但重建文件的长度不匹配。原文件未改动。" xml:space="preserve"><value>PAR2 返回成功，但重建文件的长度不匹配。原文件未改动。</value></data>
+  <data name="PAR2 重建结果未通过独立校验。原文件未改动。" xml:space="preserve"><value>PAR2 重建结果未通过独立校验。原文件未改动。</value></data>
+  <data name="PAX 元数据大小或数量超出安全限制。" xml:space="preserve"><value>PAX 元数据大小或数量超出安全限制。</value></data>
+  <data name="PAX 元数据字段过多。" xml:space="preserve"><value>PAX 元数据字段过多。</value></data>
+  <data name="PAX 元数据字段重复。" xml:space="preserve"><value>PAX 元数据字段重复。</value></data>
+  <data name="PAX 元数据格式无效。" xml:space="preserve"><value>PAX 元数据格式无效。</value></data>
+  <data name="PAX 字段包含无效 UTF-8 编码。" xml:space="preserve"><value>PAX 字段包含无效 UTF-8 编码。</value></data>
+  <data name="PAX 字段无效。" xml:space="preserve"><value>PAX 字段无效。</value></data>
+  <data name="PAX 文件大小超出认证声明。" xml:space="preserve"><value>PAX 文件大小超出认证声明。</value></data>
+  <data name="PAX 记录长度无效。" xml:space="preserve"><value>PAX 记录长度无效。</value></data>
+  <data name="PAX 路径过长。" xml:space="preserve"><value>PAX 路径过长。</value></data>
+  <data name="PAX 长度无效。" xml:space="preserve"><value>PAX 长度无效。</value></data>
+  <data name="TAR 归档结束后存在额外数据。" xml:space="preserve"><value>TAR 归档结束后存在额外数据。</value></data>
+  <data name="TAR 归档结束后存在额外条目。" xml:space="preserve"><value>TAR 归档结束后存在额外条目。</value></data>
+  <data name="TAR 文件数据被截断。" xml:space="preserve"><value>TAR 文件数据被截断。</value></data>
+  <data name="TAR 文件长度无效。" xml:space="preserve"><value>TAR 文件长度无效。</value></data>
+  <data name="TAR 结束标记缺失。" xml:space="preserve"><value>TAR 结束标记缺失。</value></data>
+  <data name="Zone.Identifier 元数据编码无效。" xml:space="preserve"><value>Zone.Identifier 元数据编码无效。</value></data>
+  <data name="Zone.Identifier 元数据超过 64 KiB。" xml:space="preserve"><value>Zone.Identifier 元数据超过 64 KiB。</value></data>
+  <data name="Zone.Identifier 元数据过大。" xml:space="preserve"><value>Zone.Identifier 元数据过大。</value></data>
+  <data name="Zone.Identifier 在检查期间发生变化。" xml:space="preserve"><value>Zone.Identifier 在检查期间发生变化。</value></data>
+  <data name="Zone.Identifier 超过 64 KiB，已停止以避免遗漏：{0}" xml:space="preserve"><value>Zone.Identifier 超过 64 KiB，已停止以避免遗漏：{0}</value></data>
+  <data name="Zstd 压缩块无效。" xml:space="preserve"><value>Zstd 压缩块无效。</value></data>
+  <data name="Zstd 块头、字典、解压长度或窗口大小无效。" xml:space="preserve"><value>Zstd 块头、字典、解压长度或窗口大小无效。</value></data>
+  <data name="Zstd 块被截断，或包含额外压缩帧或尾随数据。" xml:space="preserve"><value>Zstd 块被截断，或包含额外压缩帧或尾随数据。</value></data>
+  <data name="Zstd 块解压长度不匹配。" xml:space="preserve"><value>Zstd 块解压长度不匹配。</value></data>
+  <data name="一个恢复文件包含冲突的切片校验表。" xml:space="preserve"><value>一个恢复文件包含冲突的切片校验表。</value></data>
+  <data name="一个恢复文件包含冲突的恢复块。" xml:space="preserve"><value>一个恢复文件包含冲突的恢复块。</value></data>
+  <data name="一个恢复文件包含冲突的文件描述。" xml:space="preserve"><value>一个恢复文件包含冲突的文件描述。</value></data>
+  <data name="一个恢复文件混入了不同的恢复集。" xml:space="preserve"><value>一个恢复文件混入了不同的恢复集。</value></data>
+  <data name="不同文件 ID 使用了相同或大小写冲突的文件名。" xml:space="preserve"><value>不同文件 ID 使用了相同或大小写冲突的文件名。</value></data>
+  <data name="不支持 Windows 保留设备名：{0}" xml:space="preserve"><value>不支持 Windows 保留设备名：{0}</value></data>
+  <data name="不支持备用数据流路径。" xml:space="preserve"><value>不支持备用数据流路径。</value></data>
+  <data name="不支持的压缩选项。" xml:space="preserve"><value>不支持的压缩选项。</value></data>
+  <data name="不支持的块压缩算法。" xml:space="preserve"><value>不支持的块压缩算法。</value></data>
+  <data name="不支持的文件布局选项。" xml:space="preserve"><value>不支持的文件布局选项。</value></data>
+  <data name="不支持空路径或设备路径。" xml:space="preserve"><value>不支持空路径或设备路径。</value></data>
+  <data name="不支持符号链接、联接点或其他重解析点：{0}" xml:space="preserve"><value>不支持符号链接、联接点或其他重解析点：{0}</value></data>
+  <data name="不支持设备路径。" xml:space="preserve"><value>不支持设备路径。</value></data>
+  <data name="不支持链接条目。" xml:space="preserve"><value>不支持链接条目。</value></data>
+  <data name="不是有效的 2Password v2 加密包，或文件被截断。" xml:space="preserve"><value>不是有效的 2Password v2 加密包，或文件被截断。</value></data>
+  <data name="仅支持标准 PAX 大文件长度编码。" xml:space="preserve"><value>仅支持标准 PAX 大文件长度编码。</value></data>
+  <data name="保护独立密码" xml:space="preserve"><value>保护独立密码</value></data>
+  <data name="修复加密数据" xml:space="preserve"><value>修复加密数据</value></data>
+  <data name="修复完成" xml:space="preserve"><value>修复完成</value></data>
+  <data name="修复完成。已保留损坏文件的备份；解包时仍会执行 AES-GCM 认证。" xml:space="preserve"><value>修复完成。已保留损坏文件的备份；解包时仍会执行 AES-GCM 认证。</value></data>
+  <data name="修复期间原文件发生变化，已停止提交。" xml:space="preserve"><value>修复期间原文件发生变化，已停止提交。</value></data>
+  <data name="冗余元数据副本相互冲突，请先用恢复数据修复。" xml:space="preserve"><value>冗余元数据副本相互冲突，请先用恢复数据修复。</value></data>
+  <data name="冗余文件尾部的格式类型相互冲突，请先修复文件。" xml:space="preserve"><value>冗余文件尾部的格式类型相互冲突，请先修复文件。</value></data>
+  <data name="冗余文件尾部相互冲突，请先用恢复数据修复。" xml:space="preserve"><value>冗余文件尾部相互冲突，请先用恢复数据修复。</value></data>
+  <data name="准备恢复工作区" xml:space="preserve"><value>准备恢复工作区</value></data>
+  <data name="分离布局需要独立解密 EXE 模板。" xml:space="preserve"><value>分离布局需要独立解密 EXE 模板。</value></data>
+  <data name="分离式解密程序的大小无效。" xml:space="preserve"><value>分离式解密程序的大小无效。</value></data>
+  <data name="分离数据引用必须指向旁边的不同文件。" xml:space="preserve"><value>分离数据引用必须指向旁边的不同文件。</value></data>
+  <data name="分离数据引用格式无效。" xml:space="preserve"><value>分离数据引用格式无效。</value></data>
+  <data name="分离数据引用的边界无效。" xml:space="preserve"><value>分离数据引用的边界无效。</value></data>
+  <data name="分离数据文件名的 UTF-8 编码无效。" xml:space="preserve"><value>分离数据文件名的 UTF-8 编码无效。</value></data>
+  <data name="分离数据文件名称过长。" xml:space="preserve"><value>分离数据文件名称过长。</value></data>
+  <data name="分离数据文件必须是同一文件夹内的单个 .2pw 文件。" xml:space="preserve"><value>分离数据文件必须是同一文件夹内的单个 .2pw 文件。</value></data>
+  <data name="切片校验表对应的文件超过两个。" xml:space="preserve"><value>切片校验表对应的文件超过两个。</value></data>
+  <data name="加密包包含未经允许的尾随数据。" xml:space="preserve"><value>加密包包含未经允许的尾随数据。</value></data>
+  <data name="加密包声明的文件数量或数据大小无效。" xml:space="preserve"><value>加密包声明的文件数量或数据大小无效。</value></data>
+  <data name="加密包或归档已被截断。" xml:space="preserve"><value>加密包或归档已被截断。</value></data>
+  <data name="加密包版本或加密参数不受支持。" xml:space="preserve"><value>加密包版本或加密参数不受支持。</value></data>
+  <data name="加密包的文件边界无效。" xml:space="preserve"><value>加密包的文件边界无效。</value></data>
+  <data name="加密包长度无效。" xml:space="preserve"><value>加密包长度无效。</value></data>
+  <data name="加密块的长度、压缩算法或参数无效。" xml:space="preserve"><value>加密块的长度、压缩算法或参数无效。</value></data>
+  <data name="加密打包" xml:space="preserve"><value>加密打包</value></data>
+  <data name="加密记录数量超出格式限制。" xml:space="preserve"><value>加密记录数量超出格式限制。</value></data>
+  <data name="单文件 EXE 超过 Windows 的 4 GiB 限制。请选择自动布局或分离布局。" xml:space="preserve"><value>单文件 EXE 超过 Windows 的 4 GiB 限制。请选择自动布局或分离布局。</value></data>
+  <data name="原始块长度不匹配。" xml:space="preserve"><value>原始块长度不匹配。</value></data>
+  <data name="原始数据超过 16 TiB 的格式限制。" xml:space="preserve"><value>原始数据超过 16 TiB 的格式限制。</value></data>
+  <data name="只支持 PAX 普通文件和文件夹。" xml:space="preserve"><value>只支持 PAX 普通文件和文件夹。</value></data>
+  <data name="只支持包含一到两个文件的恢复主元数据。" xml:space="preserve"><value>只支持包含一到两个文件的恢复主元数据。</value></data>
+  <data name="同一个文件 ID 对应冲突的数据校验表。" xml:space="preserve"><value>同一个文件 ID 对应冲突的数据校验表。</value></data>
+  <data name="同一个文件 ID 对应冲突的文件描述。" xml:space="preserve"><value>同一个文件 ID 对应冲突的文件描述。</value></data>
+  <data name="同名恢复卷包含不同的恢复集 ID，已停止以避免混用。" xml:space="preserve"><value>同名恢复卷包含不同的恢复集 ID，已停止以避免混用。</value></data>
+  <data name="复制后的恢复卷损坏或缺失，已停止，未启动原生修复程序。" xml:space="preserve"><value>复制后的恢复卷损坏或缺失，已停止，未启动原生修复程序。</value></data>
+  <data name="复制期间恢复记录发生变化。" xml:space="preserve"><value>复制期间恢复记录发生变化。</value></data>
+  <data name="外部数据文件不能与源文件相同，也不能放在源文件夹内。" xml:space="preserve"><value>外部数据文件不能与源文件相同，也不能放在源文件夹内。</value></data>
+  <data name="多个密码必须不同。" xml:space="preserve"><value>多个密码必须不同。</value></data>
+  <data name="存在不区分大小写的名称冲突：{0}" xml:space="preserve"><value>存在不区分大小写的名称冲突：{0}</value></data>
+  <data name="完成" xml:space="preserve"><value>完成</value></data>
+  <data name="完整性校验失败，加密包已损坏或被修改。" xml:space="preserve"><value>完整性校验失败，加密包已损坏或被修改。</value></data>
+  <data name="密码不正确，或加密包已经损坏。" xml:space="preserve"><value>密码不正确，或加密包已经损坏。</value></data>
+  <data name="密码不能为空。" xml:space="preserve"><value>密码不能为空。</value></data>
+  <data name="密码包含无效的 Unicode 字符。" xml:space="preserve"><value>密码包含无效的 Unicode 字符。</value></data>
+  <data name="密码最多支持 1024 个 UTF-16 字符。" xml:space="preserve"><value>密码最多支持 1024 个 UTF-16 字符。</value></data>
+  <data name="已生成 {0}% PAR2 冗余；请同时保留索引和全部恢复分卷。" xml:space="preserve"><value>已生成 {0}% PAR2 冗余；请同时保留索引和全部恢复分卷。</value></data>
+  <data name="归档中的相对路径无效。" xml:space="preserve"><value>归档中的相对路径无效。</value></data>
+  <data name="归档包含不支持的链接、设备或特殊条目。" xml:space="preserve"><value>归档包含不支持的链接、设备或特殊条目。</value></data>
+  <data name="归档包含重复或大小写冲突的路径：{0}" xml:space="preserve"><value>归档包含重复或大小写冲突的路径：{0}</value></data>
+  <data name="归档名称包含无效 UTF-8 编码。" xml:space="preserve"><value>归档名称包含无效 UTF-8 编码。</value></data>
+  <data name="归档必须只包含一个源根目录或源文件。" xml:space="preserve"><value>归档必须只包含一个源根目录或源文件。</value></data>
+  <data name="归档数据无效，未提交解包结果。" xml:space="preserve"><value>归档数据无效，未提交解包结果。</value></data>
+  <data name="归档文件属性缺失或无效。" xml:space="preserve"><value>归档文件属性缺失或无效。</value></data>
+  <data name="归档文件长度超过认证声明。" xml:space="preserve"><value>归档文件长度超过认证声明。</value></data>
+  <data name="归档时间戳缺失或无效。" xml:space="preserve"><value>归档时间戳缺失或无效。</value></data>
+  <data name="归档条目数量与认证信息不一致。" xml:space="preserve"><value>归档条目数量与认证信息不一致。</value></data>
+  <data name="归档条目数量与认证声明不符。" xml:space="preserve"><value>归档条目数量与认证声明不符。</value></data>
+  <data name="归档的父文件夹缺失或不是文件夹。" xml:space="preserve"><value>归档的父文件夹缺失或不是文件夹。</value></data>
+  <data name="归档结束后存在非零数据。" xml:space="preserve"><value>归档结束后存在非零数据。</value></data>
+  <data name="归档结束后存在额外加密记录。" xml:space="preserve"><value>归档结束后存在额外加密记录。</value></data>
+  <data name="归档结束后存在额外数据。" xml:space="preserve"><value>归档结束后存在额外数据。</value></data>
+  <data name="归档缺少文件数据。" xml:space="preserve"><value>归档缺少文件数据。</value></data>
+  <data name="归档路径试图越过目标文件夹。" xml:space="preserve"><value>归档路径试图越过目标文件夹。</value></data>
+  <data name="恢复主元数据包含重复文件 ID。" xml:space="preserve"><value>恢复主元数据包含重复文件 ID。</value></data>
+  <data name="恢复元数据包含不安全的文件名。" xml:space="preserve"><value>恢复元数据包含不安全的文件名。</value></data>
+  <data name="恢复元数据没有包含所选恢复集对应的加密包。" xml:space="preserve"><value>恢复元数据没有包含所选恢复集对应的加密包。</value></data>
+  <data name="恢复冗余比例必须在 1%–50% 之间。" xml:space="preserve"><value>恢复冗余比例必须在 1%–50% 之间。</value></data>
+  <data name="恢复切片大小或文件数量超出安全限制。" xml:space="preserve"><value>恢复切片大小或文件数量超出安全限制。</value></data>
+  <data name="恢复卷不是普通文件。" xml:space="preserve"><value>恢复卷不是普通文件。</value></data>
+  <data name="恢复卷中的文件 ID 与主元数据不匹配。" xml:space="preserve"><value>恢复卷中的文件 ID 与主元数据不匹配。</value></data>
+  <data name="恢复卷包含互相冲突的主元数据。" xml:space="preserve"><value>恢复卷包含互相冲突的主元数据。</value></data>
+  <data name="恢复卷存在大小写冲突。" xml:space="preserve"><value>恢复卷存在大小写冲突。</value></data>
+  <data name="恢复卷数量超过 128 个的安全限制。" xml:space="preserve"><value>恢复卷数量超过 128 个的安全限制。</value></data>
+  <data name="恢复卷缺少完整的主元数据。" xml:space="preserve"><value>恢复卷缺少完整的主元数据。</value></data>
+  <data name="恢复卷缺少文件描述或切片校验表。" xml:space="preserve"><value>恢复卷缺少文件描述或切片校验表。</value></data>
+  <data name="恢复块不足，无法完整修复。请寻找其他 PAR2 分卷或完好的备份。" xml:space="preserve"><value>恢复块不足，无法完整修复。请寻找其他 PAR2 分卷或完好的备份。</value></data>
+  <data name="恢复块大小与主元数据不一致。" xml:space="preserve"><value>恢复块大小与主元数据不一致。</value></data>
+  <data name="恢复块编号相同但内容冲突。" xml:space="preserve"><value>恢复块编号相同但内容冲突。</value></data>
+  <data name="恢复操作不支持符号链接或联接点。" xml:space="preserve"><value>恢复操作不支持符号链接或联接点。</value></data>
+  <data name="恢复文件切片数量与文件长度不匹配。" xml:space="preserve"><value>恢复文件切片数量与文件长度不匹配。</value></data>
+  <data name="恢复文件包含未支持的包类型（包括文件名覆盖扩展），已停止。" xml:space="preserve"><value>恢复文件包含未支持的包类型（包括文件名覆盖扩展），已停止。</value></data>
+  <data name="恢复文件名使用了 Windows 保留设备名称。" xml:space="preserve"><value>恢复文件名使用了 Windows 保留设备名称。</value></data>
+  <data name="恢复文件名包含无效 Unicode。" xml:space="preserve"><value>恢复文件名包含无效 Unicode。</value></data>
+  <data name="恢复文件声明的数据超过 2 TiB。" xml:space="preserve"><value>恢复文件声明的数据超过 2 TiB。</value></data>
+  <data name="恢复文件属性" xml:space="preserve"><value>恢复文件属性</value></data>
+  <data name="恢复文件描述数量超过两个。" xml:space="preserve"><value>恢复文件描述数量超过两个。</value></data>
+  <data name="恢复文件试图访问所选加密包之外的文件：" xml:space="preserve"><value>恢复文件试图访问所选加密包之外的文件：</value></data>
+  <data name="恢复文件路径过长或包含备用数据流。" xml:space="preserve"><value>恢复文件路径过长或包含备用数据流。</value></data>
+  <data name="恢复记录已生成" xml:space="preserve"><value>恢复记录已生成</value></data>
+  <data name="恢复记录检查失败，尚未开始解密。" xml:space="preserve"><value>恢复记录检查失败，尚未开始解密。</value></data>
+  <data name="恢复记录目标已存在，已停止以避免覆盖。" xml:space="preserve"><value>恢复记录目标已存在，已停止以避免覆盖。</value></data>
+  <data name="恢复记录缺少关键元数据，无法修复。" xml:space="preserve"><value>恢复记录缺少关键元数据，无法修复。</value></data>
+  <data name="恢复路径不能包含符号链接、联接点或其他重解析点。" xml:space="preserve"><value>恢复路径不能包含符号链接、联接点或其他重解析点。</value></data>
+  <data name="恢复集 ID 与主元数据不一致。" xml:space="preserve"><value>恢复集 ID 与主元数据不一致。</value></data>
+  <data name="恢复集名称必须对应一个 .exe 或 .2pw 加密包。" xml:space="preserve"><value>恢复集名称必须对应一个 .exe 或 .2pw 加密包。</value></data>
+  <data name="恢复集的包数量超过安全限制。" xml:space="preserve"><value>恢复集的包数量超过安全限制。</value></data>
+  <data name="恢复集超过 32768 个源切片或 2 TiB 的安全限制。" xml:space="preserve"><value>恢复集超过 32768 个源切片或 2 TiB 的安全限制。</value></data>
+  <data name="所有元数据副本均损坏，请先用恢复数据修复。" xml:space="preserve"><value>所有元数据副本均损坏，请先用恢复数据修复。</value></data>
+  <data name="所选恢复路径不是普通文件。" xml:space="preserve"><value>所选恢复路径不是普通文件。</value></data>
+  <data name="打包期间文件夹内容发生变化，请重试。" xml:space="preserve"><value>打包期间文件夹内容发生变化，请重试。</value></data>
+  <data name="打包期间源数据发生变化：{0}" xml:space="preserve"><value>打包期间源数据发生变化：{0}</value></data>
+  <data name="打包期间源文件发生变化，请关闭修改此文件的程序后重试：{0}" xml:space="preserve"><value>打包期间源文件发生变化，请关闭修改此文件的程序后重试：{0}</value></data>
+  <data name="损坏的原文件已保留为 .2pw-before-repair-*.bak。" xml:space="preserve"><value>损坏的原文件已保留为 .2pw-before-repair-*.bak。</value></data>
+  <data name="文件及文件夹数量超过 100 万个的安全限制。" xml:space="preserve"><value>文件及文件夹数量超过 100 万个的安全限制。</value></data>
+  <data name="文件名、路径或附加元数据超过 {0} MiB 的安全内存预算。请将源文件分成较小的包。" xml:space="preserve"><value>文件名、路径或附加元数据超过 {0} MiB 的安全内存预算。请将源文件分成较小的包。</value></data>
+  <data name="文件名为空或填充不符合 PAR2 格式。" xml:space="preserve"><value>文件名为空或填充不符合 PAR2 格式。</value></data>
+  <data name="文件名包含无法无损保存的 Unicode 字符。" xml:space="preserve"><value>文件名包含无法无损保存的 Unicode 字符。</value></data>
+  <data name="文件夹条目不能包含文件数据。" xml:space="preserve"><value>文件夹条目不能包含文件数据。</value></data>
+  <data name="文件完整，无需修复。" xml:space="preserve"><value>文件完整，无需修复。</value></data>
+  <data name="文件完整，校验通过。" xml:space="preserve"><value>文件完整，校验通过。</value></data>
+  <data name="文件尾部损坏或格式不受支持，请先用恢复数据修复。" xml:space="preserve"><value>文件尾部损坏或格式不受支持，请先用恢复数据修复。</value></data>
+  <data name="文件描述的长度无效。" xml:space="preserve"><value>文件描述的长度无效。</value></data>
+  <data name="文件数据长度不匹配。" xml:space="preserve"><value>文件数据长度不匹配。</value></data>
+  <data name="文件数量或总字节数不匹配，未提交解包结果。" xml:space="preserve"><value>文件数量或总字节数不匹配，未提交解包结果。</value></data>
+  <data name="文件缺少完整的冗余尾部。" xml:space="preserve"><value>文件缺少完整的冗余尾部。</value></data>
+  <data name="文件被截断或在读取期间发生变化。" xml:space="preserve"><value>文件被截断或在读取期间发生变化。</value></data>
+  <data name="文件路径不能为空。" xml:space="preserve"><value>文件路径不能为空。</value></data>
+  <data name="文件长度超过认证声明。" xml:space="preserve"><value>文件长度超过认证声明。</value></data>
+  <data name="旁边的 .2pw 数据文件与此解密程序不匹配。请使用创建时产生的完整配套文件。" xml:space="preserve"><value>旁边的 .2pw 数据文件与此解密程序不匹配。请使用创建时产生的完整配套文件。</value></data>
+  <data name="无法启动 PAR2 工具。" xml:space="preserve"><value>无法启动 PAR2 工具。</value></data>
+  <data name="无法安全保存文件名：{0}" xml:space="preserve"><value>无法安全保存文件名：{0}</value></data>
+  <data name="无法检查文件的数据流：{0} (Windows {1})" xml:space="preserve"><value>无法检查文件的数据流：{0} (Windows {1})</value></data>
+  <data name="无法确定当前 Windows 用户。" xml:space="preserve"><value>无法确定当前 Windows 用户。</value></data>
+  <data name="本版本 PAR2 恢复集支持最多 2 TiB 的加密数据。加密包已经保留，可不生成恢复记录。" xml:space="preserve"><value>本版本 PAR2 恢复集支持最多 2 TiB 的加密数据。加密包已经保留，可不生成恢复记录。</value></data>
+  <data name="核对源文件" xml:space="preserve"><value>核对源文件</value></data>
+  <data name="检查 PAR2 恢复记录" xml:space="preserve"><value>检查 PAR2 恢复记录</value></data>
+  <data name="检查文件" xml:space="preserve"><value>检查文件</value></data>
+  <data name="检测到 NTFS 备用数据流，已停止以避免丢失：{0} ({1})" xml:space="preserve"><value>检测到 NTFS 备用数据流，已停止以避免丢失：{0} ({1})</value></data>
+  <data name="检测到损坏，现有恢复块足够，可以修复。" xml:space="preserve"><value>检测到损坏，现有恢复块足够，可以修复。</value></data>
+  <data name="正在处理加密数据，不需要密码。" xml:space="preserve"><value>正在处理加密数据，不需要密码。</value></data>
+  <data name="此加密包已有 PAR2 文件，程序不会覆盖。请先将已有恢复记录移至其他位置。" xml:space="preserve"><value>此加密包已有 PAR2 文件，程序不会覆盖。请先将已有恢复记录移至其他位置。</value></data>
+  <data name="此项目具有不支持的链接、EFS、设备或离线属性，已停止以避免数据遗漏：{0}" xml:space="preserve"><value>此项目具有不支持的链接、EFS、设备或离线属性，已停止以避免数据遗漏：{0}</value></data>
+  <data name="没有完整可用的恢复卷；所有候选恢复文件都已损坏或不可读取。" xml:space="preserve"><value>没有完整可用的恢复卷；所有候选恢复文件都已损坏或不可读取。</value></data>
+  <data name="源文件大小已经变化：{0}" xml:space="preserve"><value>源文件大小已经变化：{0}</value></data>
+  <data name="源文件读取不完整：{0}" xml:space="preserve"><value>源文件读取不完整：{0}</value></data>
+  <data name="父路径不是文件夹。" xml:space="preserve"><value>父路径不是文件夹。</value></data>
+  <data name="父路径不是文件夹：{0}" xml:space="preserve"><value>父路径不是文件夹：{0}</value></data>
+  <data name="独立数据文件必须与 EXE 位于同一个文件夹。" xml:space="preserve"><value>独立数据文件必须与 EXE 位于同一个文件夹。</value></data>
+  <data name="生成 PAR2 恢复记录" xml:space="preserve"><value>生成 PAR2 恢复记录</value></data>
+  <data name="生成恢复记录失败。" xml:space="preserve"><value>生成恢复记录失败。</value></data>
+  <data name="生成配套解密程序" xml:space="preserve"><value>生成配套解密程序</value></data>
+  <data name="目标已存在。请选择新的文件或文件夹名称，程序不会覆盖原有数据。" xml:space="preserve"><value>目标已存在。请选择新的文件或文件夹名称，程序不会覆盖原有数据。</value></data>
+  <data name="目标文件名发生文件系统冲突。" xml:space="preserve"><value>目标文件名发生文件系统冲突。</value></data>
+  <data name="目标的父文件夹不存在。" xml:space="preserve"><value>目标的父文件夹不存在。</value></data>
+  <data name="目标磁盘可用空间不足以容纳完整解包数据。" xml:space="preserve"><value>目标磁盘可用空间不足以容纳完整解包数据。</value></data>
+  <data name="短文件的两个 PAR2 数据摘要不一致。" xml:space="preserve"><value>短文件的两个 PAR2 数据摘要不一致。</value></data>
+  <data name="组装独立 EXE" xml:space="preserve"><value>组装独立 EXE</value></data>
+  <data name="缺少内置恢复组件，请重新安装完整版本。" xml:space="preserve"><value>缺少内置恢复组件，请重新安装完整版本。</value></data>
+  <data name="缺少外部加密数据文件：{0}。请把解密 EXE 和对应的 .2pw 文件放在同一文件夹。" xml:space="preserve"><value>缺少外部加密数据文件：{0}。请把解密 EXE 和对应的 .2pw 文件放在同一文件夹。</value></data>
+  <data name="缺少完整的认证记录，加密包可能被截断。" xml:space="preserve"><value>缺少完整的认证记录，加密包可能被截断。</value></data>
+  <data name="自解密程序模板不是 Windows EXE。" xml:space="preserve"><value>自解密程序模板不是 Windows EXE。</value></data>
+  <data name="自解密程序模板不能已经包含加密数据或分离引用。" xml:space="preserve"><value>自解密程序模板不能已经包含加密数据或分离引用。</value></data>
+  <data name="自解密程序模板大小无效，模板本身必须小于 Windows EXE 限制。" xml:space="preserve"><value>自解密程序模板大小无效，模板本身必须小于 Windows EXE 限制。</value></data>
+  <data name="自解密程序的输出文件名必须以 .exe 结尾。" xml:space="preserve"><value>自解密程序的输出文件名必须以 .exe 结尾。</value></data>
+  <data name="请将加密包和所有 PAR2 文件一起保存。" xml:space="preserve"><value>请将加密包和所有 PAR2 文件一起保存。</value></data>
+  <data name="请设置 1 至 16 个独立密码。" xml:space="preserve"><value>请设置 1 至 16 个独立密码。</value></data>
+  <data name="请选择 2Password 创建的 .par2 恢复文件。" xml:space="preserve"><value>请选择 2Password 创建的 .par2 恢复文件。</value></data>
+  <data name="请选择 2Password 的 EXE 或 .2pw 加密文件。" xml:space="preserve"><value>请选择 2Password 的 EXE 或 .2pw 加密文件。</value></data>
+  <data name="请选择具体文件或文件夹，不能直接打包磁盘根目录。" xml:space="preserve"><value>请选择具体文件或文件夹，不能直接打包磁盘根目录。</value></data>
+  <data name="读取或写入失败，请检查空间、文件占用和访问权限。" xml:space="preserve"><value>读取或写入失败，请检查空间、文件占用和访问权限。</value></data>
+  <data name="读取数据流时失败：{0} (Windows {1})" xml:space="preserve"><value>读取数据流时失败：{0} (Windows {1})</value></data>
+  <data name="路径超过 Windows 可安全处理的长度。" xml:space="preserve"><value>路径超过 Windows 可安全处理的长度。</value></data>
+  <data name="路径过长或包含备用数据流。" xml:space="preserve"><value>路径过长或包含备用数据流。</value></data>
+  <data name="输出文件不能放在正在打包的源文件夹内。" xml:space="preserve"><value>输出文件不能放在正在打包的源文件夹内。</value></data>
+  <data name="输出路径不能覆盖程序自身。" xml:space="preserve"><value>输出路径不能覆盖程序自身。</value></data>
+  <data name="重建结果仍有损坏，原文件未替换。" xml:space="preserve"><value>重建结果仍有损坏，原文件未替换。</value></data>
+  <data name="验证密码" xml:space="preserve"><value>验证密码</value></data>
+  <data name="验证并解包" xml:space="preserve"><value>验证并解包</value></data>
+  <data name="检测到损坏" xml:space="preserve"><value>检测到损坏</value></data>
+  <data name="正在检查恢复记录，修复后会重新认证并解包。" xml:space="preserve"><value>正在检查恢复记录，修复后会重新认证并解包。</value></data>
+  <data name="重新认证并解包" xml:space="preserve"><value>重新认证并解包</value></data>
+  <data name="恢复完成，正在重新认证并解包。" xml:space="preserve"><value>恢复完成，正在重新认证并解包。</value></data>
+  <data name="还原目标已存在。请选择新的文件夹，程序不会合并或覆盖。" xml:space="preserve"><value>还原目标已存在。请选择新的文件夹，程序不会合并或覆盖。</value></data>
+  <data name="恢复记录检查失败，未提交解包结果。" xml:space="preserve"><value>恢复记录检查失败，未提交解包结果。</value></data>
+</root>
