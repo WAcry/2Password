@@ -20,24 +20,14 @@ public partial class App : Application
             Shutdown(code);
             return;
         }
-        string? stubOverride = null;
-        for (var i = 0; i + 1 < e.Args.Length; i++)
-            if (e.Args[i] == "--stub") stubOverride = e.Args[i + 1];
-
+        var launch = GuiLaunchOptions.Parse(e.Args);
         var processPath = Environment.ProcessPath;
         var embedded = processPath is not null && PackageService.HasPackage(processPath);
         Theme.Initialize(e.Args);
-        string? external = null, target = null;
-        bool encrypt = false, repair = false;
-        for (var index = 0; index < e.Args.Length; index++)
-        {
-            if (e.Args[index] is "--stub" or "--language" or "--theme") { index++; continue; }
-            if (e.Args[index] == "--target" && index + 1 < e.Args.Length) { target = e.Args[++index]; continue; }
-            if (e.Args[index] == "--encrypt" && index + 1 < e.Args.Length) { encrypt = true; external ??= e.Args[++index]; continue; }
-            if (e.Args[index] == "--repair" && index + 1 < e.Args.Length) { repair = true; external ??= e.Args[++index]; continue; }
-            if (!e.Args[index].StartsWith("--", StringComparison.Ordinal)) external ??= e.Args[index];
-        }
-        MainWindow = new MainWindow(embedded ? processPath : null, stubOverride, embedded ? null : external, encrypt && !embedded, target, repair && !embedded);
+        var window = new MainWindow(embedded ? processPath : null, launch.StubPath, embedded ? null : launch.InitialPath,
+            launch.Encrypt && !embedded, launch.Target, launch.Repair && !embedded);
+        window.ApplyLaunchOptions(launch);
+        MainWindow = window;
         ShutdownMode = ShutdownMode.OnMainWindowClose;
         MainWindow.Show();
     }

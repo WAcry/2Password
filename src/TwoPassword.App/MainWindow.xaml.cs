@@ -39,6 +39,7 @@ public partial class MainWindow : Window
     private readonly bool _initialEncrypt;
     private readonly bool _initialRepair;
     private readonly string? _initialTarget;
+    private bool _verifyFirstOnLoad;
     private readonly List<PasswordRow> _rows = [];
     private readonly DispatcherTimer _progressTimer;
     private readonly DispatcherTimer _revealTimer;
@@ -135,6 +136,17 @@ public partial class MainWindow : Window
         _ => HomeView,
     };
 
+    internal void ApplyLaunchOptions(GuiLaunchOptions options)
+    {
+        if ((options.Compression switch { "zstd" => CompressionZstd, "brotli" => CompressionBrotli, "none" => CompressionNone, _ => null }) is { } compression)
+            compression.IsChecked = true;
+        if ((options.Layout switch { "auto" => LayoutAuto, "embedded" => LayoutEmbedded, "detached" => LayoutDetached, _ => null }) is { } layout)
+            layout.IsChecked = true;
+        if ((options.RecoveryPercent switch { 0 => Recovery0, 5 => Recovery5, 10 => Recovery10, 20 => Recovery20, _ => null }) is { } recovery)
+            recovery.IsChecked = true;
+        _verifyFirstOnLoad = options.VerifyFirst;
+    }
+
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         if (Elevation.IsElevated && _embeddedPackage is null) Elevation.AcceptShellDrops(this, ShellDrop);
@@ -149,6 +161,7 @@ public partial class MainWindow : Window
             await RouteAsync(_initialPath, encrypt: _initialEncrypt);
             if (_initialTarget is not null) UseTarget(_initialTarget);
         }
+        if (_verifyFirstOnLoad && _screen == Screen.Unlock) VerifyFirstCheck.IsChecked = true;
     }
 
     private void UseTarget(string target)
@@ -422,30 +435,36 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Reopens elevated on the same item and locations. Passwords stay behind and are typed again.</summary>
+    /// <summary>Reopens elevated with the same item, locations and options. Passwords stay behind and are typed again.</summary>
     private void RunElevated()
     {
         if (_busy) return;
-        var arguments = new List<string> { "--language", UiText.Language };
-        if (Theme.Forced is { } theme) arguments.AddRange(["--theme", theme]);
-        if (_stubOverride is not null) arguments.AddRange(["--stub", _stubOverride]);
+        var launch = new GuiLaunchOptions(StubPath: _stubOverride);
         switch (_screen)
         {
             case Screen.Encrypt when _sourcePath is not null:
-                arguments.AddRange(["--encrypt", _sourcePath]);
-                if (_outputPath is not null) arguments.AddRange(["--target", _outputPath]);
+                launch = launch with
+                {
+                    InitialPath = _sourcePath, Encrypt = true, Target = _outputPath,
+                    Compression = SelectedCompression().ToString().ToLowerInvariant(),
+                    Layout = SelectedLayout().ToString().ToLowerInvariant(),
+                    RecoveryPercent = SelectedRecoveryPercent(),
+                };
                 break;
             case Screen.Unlock when _packagePath is not null:
-                if (_embeddedPackage is null) arguments.Add(_packagePath);
-                if (_destinationPath is not null) arguments.AddRange(["--target", _destinationPath]);
+                launch = launch with
+                {
+                    InitialPath = _embeddedPackage is null ? _packagePath : null,
+                    Target = _destinationPath, VerifyFirst = VerifyFirstCheck.IsChecked == true,
+                };
                 break;
             case Screen.Repair when _repairPath is not null && _embeddedPackage is null:
-                arguments.AddRange(["--repair", _repairPath]);
+                launch = launch with { InitialPath = _repairPath, Repair = true };
                 break;
         }
         try
         {
-            if (Elevation.Restart(arguments)) Close();
+            if (Elevation.Restart(launch.ElevationArguments(UiText.Language, Theme.Forced))) Close();
         }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException)
         {

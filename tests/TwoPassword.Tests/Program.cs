@@ -29,9 +29,12 @@ internal static partial class Program
         Console.WriteLine("2Password adversarial tests; synthetic data only");
         Console.WriteLine("Workspace: " + _root);
 
+        await RunGuiLaunchOptionsTests();
+        if (args.Contains("--gui-arguments-only", StringComparer.Ordinal)) return await SaveResults(repository);
         await RunPar2MetadataTests();
         if (args.Contains("--par2-only", StringComparer.Ordinal)) return await SaveResults(repository);
         await RunWindowsAclTests();
+        await Run("Recovery offset samples use bounded memory and exact final-block padding", RecoverySampleBoundaries);
         await Run("Argon2id RFC 9106 section 5.3 known-answer vector", Argon2KnownVector);
         await Run("AES-256-GCM published known-answer vector and bad-tag rejection", AesGcmKnownVector);
         await Run("Create multilingual/deep-path fixture and authenticated package", CreateFixture);

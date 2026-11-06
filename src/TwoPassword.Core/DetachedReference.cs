@@ -104,6 +104,26 @@ internal sealed class ResolvedPackage : IDisposable
         finally { data?.Dispose(); first?.Dispose(); }
     }
 
+    /// <summary>Recovery may restore the header, so compare its identity only after its bytes are intact.</summary>
+    internal static void ValidateDetachedPayload(string input, Stream payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        string path = SafePaths.Full(input);
+        using var launcher = OpenFile(path);
+        if (!IsLauncher(launcher)) throw Mismatch();
+        var (reference, _) = Sibling(path, launcher);
+        long position = payload.Position;
+        try
+        {
+            payload.Position = 0;
+            byte[] header = RedundantStorage.ReadHeader(payload, Envelope.HeaderReplicaMagic,
+                Envelope.MinimumHeaderSize, Envelope.MaximumHeaderSize);
+            if (!CryptographicOperations.FixedTimeEquals(reference.HeaderHash, SHA256.HashData(header)))
+                throw Mismatch();
+        }
+        finally { payload.Position = position; }
+    }
+
     /// <summary>Finds the payload and recovery ranges without reading the header, which may be damaged.</summary>
     internal static PackageRegions Locate(string input)
     {

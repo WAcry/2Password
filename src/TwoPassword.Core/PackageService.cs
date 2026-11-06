@@ -30,6 +30,10 @@ public static class PackageService
     /// <summary>Reads only the redundant trailer, so it still works when the header or the encrypted blocks are damaged.</summary>
     public static PackageRegions LocateRegions(string path) => ResolvedPackage.Locate(path);
 
+    /// <summary>Checks a restored raw payload against its original detached launcher before extraction or writeback.</summary>
+    public static void ValidateDetachedPayload(string launcherPath, Stream payload) =>
+        ResolvedPackage.ValidateDetachedPayload(launcherPath, payload);
+
     public static PayloadCandidates FindPayloadCandidates(string path, CancellationToken cancellationToken = default) =>
         ResolvedPackage.Candidates(path, cancellationToken);
 

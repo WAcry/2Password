@@ -158,7 +158,10 @@ public static class RecoveryService
         var location = Locate(packagePath, ct);
         if (location.Regions.RecoveryLength == 0) return new(packagePath, 4, Text.Get("这个加密包没有恢复记录。"));
         using var file = new FileStream(Extended(location.Regions.DataPath), FileMode.Open, FileAccess.Read, FileShare.Read, 131072, FileOptions.SequentialScan);
-        return Inspect(packagePath, file, location, progress, ct, out _, out _);
+        var result = Inspect(packagePath, file, location, progress, ct, out _, out _);
+        if (location.Regions.IsDetached && result.DamagedBlocks == 0 && (result.Success || result.Repairable))
+            PackageService.ValidateDetachedPayload(packagePath, file);
+        return result;
     }
 
     private static async Task<RecoveryResult> RepairCoreAsync(string packagePath, IProgress<RecoveryProgress>? progress, CancellationToken ct)
@@ -170,6 +173,8 @@ public static class RecoveryService
         // Read-write with read sharing: nobody else can change the bytes between checking and writing back.
         using var file = new FileStream(Extended(regions.DataPath), FileMode.Open, FileAccess.ReadWrite, FileShare.Read, 131072, FileOptions.SequentialScan);
         var result = Inspect(packagePath, file, location, progress, ct, out var set, out var damaged);
+        if (regions.IsDetached && damaged.Count == 0 && (result.Success || result.Repairable))
+            PackageService.ValidateDetachedPayload(packagePath, file);
         if (!result.Repairable) return result;
         if (damaged.Count > 0)
         {
@@ -179,6 +184,7 @@ public static class RecoveryService
                 string repaired = await RebuildAsync(file, regions, set!, work, progress, ct).ConfigureAwait(false);
                 ct.ThrowIfCancellationRequested();
                 await using var source = new FileStream(Extended(repaired), FileMode.Open, FileAccess.Read, FileShare.Read, 131072, FileOptions.Asynchronous);
+                if (regions.IsDetached) PackageService.ValidateDetachedPayload(packagePath, source);
                 foreach (int slice in damaged)
                 {
                     long offset = slice * set!.BlockSize;
@@ -219,6 +225,11 @@ public static class RecoveryService
                 }
             }
             PackageService.FramePayload(repaired);
+            if (regions.IsDetached)
+            {
+                using var payload = new FileStream(Extended(repaired), FileMode.Open, FileAccess.Read, FileShare.Read);
+                PackageService.ValidateDetachedPayload(options.PackagePath, payload);
+            }
             recoveryProgress?.Report(new(Text.Get("重新解密"), null, Text.Get("修复完成，正在重新解密。")));
             var result = await PackageService.ExtractAsync(options with { PackagePath = repaired }, packageProgress, ct).ConfigureAwait(false);
             return result with { DataPath = regions.IsDetached ? regions.DataPath : null, IsDetached = regions.IsDetached };
@@ -296,9 +307,39 @@ public static class RecoveryService
             int score = MatchingSamples(file, offset, length, candidates.HeaderLength, set, ct);
             if (score > best) (chosen, best) = (offset, score);
         }
+        if (best <= 0)
+            chosen = FindAdditionalSample(file, candidates.Offsets, length, candidates.HeaderLength, set, ct);
         long end = start + set.End;
-        if (best <= 0 || end <= chosen + length) return null;
+        if (chosen < 0 || end <= chosen + length) return null;
         return new(candidates.DataPath, chosen, length, end - chosen - length, candidates.IsDetached);
+    }
+
+    /// <summary>The fast samples can all hit damaged slices. Probe other nonzero slices across all candidate
+    /// starts before giving up; a repairable set has at most RecoveryBlocks damaged slices.</summary>
+    private static long FindAdditionalSample(FileStream file, IReadOnlyList<long> offsets, long length, int skip, Par2Set set, CancellationToken ct)
+    {
+        int slices = set.SliceMd5.Length;
+        int first = (int)Math.Min(slices - 1, (skip + set.BlockSize - 1) / set.BlockSize);
+        int samples = (int)Math.Clamp(64L * 1024 * 1024 / set.BlockSize, 2, 16);
+        var sampled = Enumerable.Range(0, samples)
+            .Select(i => first + (int)((long)(slices - 1 - first) * i / Math.Max(1, samples - 1))).ToHashSet();
+        byte[] buffer = new byte[1024 * 1024];
+        byte[] zero = HashPaddedSample(file, 0, 0, set.BlockSize, buffer, ct)!;
+        int examined = 0, limit = Math.Min(slices - first, set.RecoveryBlocks + 1);
+        for (int index = first; index < slices && examined < limit; index++)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (sampled.Contains(index) || set.SliceMd5[index].AsSpan().SequenceEqual(zero)) continue;
+            examined++;
+            long position = (long)index * set.BlockSize;
+            long count = Math.Min(set.BlockSize, length - position);
+            foreach (long offset in offsets)
+            {
+                byte[]? actual = HashPaddedSample(file, offset + position, count, set.BlockSize, buffer, ct);
+                if (actual is not null && actual.AsSpan().SequenceEqual(set.SliceMd5[index])) return offset;
+            }
+        }
+        return -1;
     }
 
     /// <summary>
@@ -310,20 +351,45 @@ public static class RecoveryService
         int slices = set.SliceMd5.Length;
         int first = (int)Math.Min(slices - 1, (skip + set.BlockSize - 1) / set.BlockSize);
         int samples = (int)Math.Clamp(64L * 1024 * 1024 / set.BlockSize, 2, 16);
-        byte[] slice = new byte[set.BlockSize];
-        byte[] zero = MD5.HashData(slice);
+        byte[] buffer = new byte[1024 * 1024];
+        byte[] zero = HashPaddedSample(file, 0, 0, set.BlockSize, buffer, ct)!;
         int matches = 0;
         foreach (int index in Enumerable.Range(0, samples).Select(i => first + (int)((long)(slices - 1 - first) * i / Math.Max(1, samples - 1))).Distinct())
         {
             ct.ThrowIfCancellationRequested();
             if (set.SliceMd5[index].AsSpan().SequenceEqual(zero)) continue;
             long position = (long)index * set.BlockSize;
-            Array.Clear(slice);
-            int count = (int)Math.Min(set.BlockSize, length - position);
-            if (RandomAccess.Read(file.SafeFileHandle, slice.AsSpan(0, count), offset + position) != count) continue;
-            if (MD5.HashData(slice).AsSpan().SequenceEqual(set.SliceMd5[index])) matches++;
+            long count = Math.Min(set.BlockSize, length - position);
+            byte[]? actual = HashPaddedSample(file, offset + position, count, set.BlockSize, buffer, ct);
+            if (actual is not null && actual.AsSpan().SequenceEqual(set.SliceMd5[index])) matches++;
         }
         return matches;
+    }
+
+    /// <summary>Hashes one sample with PAR2 zero padding, using bounded memory even for multi-GiB blocks.
+    /// A zero-length sample computes the all-zero block hash; a short file read cannot match a sample.</summary>
+    private static byte[]? HashPaddedSample(FileStream file, long offset, long count, long blockSize, byte[] buffer, CancellationToken ct)
+    {
+        using var md5 = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
+        long done = 0;
+        while (done < count)
+        {
+            ct.ThrowIfCancellationRequested();
+            int read = RandomAccess.Read(file.SafeFileHandle, buffer.AsSpan(0, (int)Math.Min(buffer.Length, count - done)), offset + done);
+            if (read == 0) return null;
+            md5.AppendData(buffer, 0, read);
+            done += read;
+        }
+        long padding = blockSize - count;
+        if (padding > 0) Array.Clear(buffer);
+        while (padding > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            int chunk = (int)Math.Min(buffer.Length, padding);
+            md5.AppendData(buffer, 0, chunk);
+            padding -= chunk;
+        }
+        return md5.GetHashAndReset();
     }
 
     /// <summary>PAR2 checksums each slice with its tail padded by zeros to the full block size.</summary>

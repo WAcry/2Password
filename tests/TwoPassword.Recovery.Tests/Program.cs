@@ -244,6 +244,75 @@ await Check("detached pair keeps recovery data in the .2pw file", async () =>
     Assert(await SameHash(SHA256.HashData(contents), Path.Combine(output, Path.GetFileName(source))), "Output differs.");
     Assert((await RecoveryService.RepairAsync(launcher)).Repaired && await SameHash(before, pack.DataPath!), "Repair through the launcher failed.");
 });
+string bindingRoot = Path.Combine(work, "matching-companions");
+string bindingLauncher = Path.Combine(bindingRoot, "A", "package.exe");
+string bindingData = Path.ChangeExtension(bindingLauncher, ".2pw");
+byte[] bindingContents = RandomNumberGenerator.GetBytes(128 * 1024 + 137);
+byte[]? matchingData = null, replacementData = null;
+await Check("verification and repair reject a healthy companion from another package", async () =>
+{
+    string a = Path.Combine(bindingRoot, "A"), b = Path.Combine(bindingRoot, "B");
+    Directory.CreateDirectory(a);
+    Directory.CreateDirectory(b);
+    string aSource = Path.Combine(a, "source.bin"), bSource = Path.Combine(b, "source.bin");
+    await File.WriteAllBytesAsync(aSource, bindingContents);
+    await File.WriteAllBytesAsync(bSource, RandomNumberGenerator.GetBytes(bindingContents.Length));
+    foreach (var pair in new[] { (aSource, bindingLauncher), (bSource, Path.Combine(b, "package.exe")) })
+    {
+        var (_, error) = await RecoveryService.CreateAsync(new(pair.Item1, pair.Item2, ["x"], PackageCompression.None, template, PackageLayout.Detached), 10);
+        Assert(error is null, error?.ToString() ?? "");
+    }
+    matchingData = await File.ReadAllBytesAsync(bindingData);
+    replacementData = await File.ReadAllBytesAsync(Path.Combine(b, "package.2pw"));
+    await File.WriteAllBytesAsync(bindingData, replacementData);
+    await MustRejectCompanion(() => RecoveryService.VerifyAsync(bindingLauncher));
+    await MustRejectCompanion(() => RecoveryService.RepairAsync(bindingLauncher));
+    Assert(await SameHash(SHA256.HashData(replacementData), bindingData), "Companion check changed the data file.");
+});
+await Check("recovery never extracts or writes back a replacement companion", async () =>
+{
+    Assert(replacementData is not null, "Companion fixture was not created.");
+    foreach (string damage in new[] { "ciphertext", "header", "trailer" })
+    {
+        await File.WriteAllBytesAsync(bindingData, replacementData!);
+        var regions = PackageService.LocateRegions(bindingLauncher);
+        if (damage == "ciphertext") Flip(bindingData, regions.PayloadLength / 2);
+        else if (damage == "header") Zero(bindingData, 0, 3 * 2048);
+        else
+        {
+            using var file = new FileStream(bindingData, FileMode.Open, FileAccess.Write, FileShare.None);
+            file.SetLength(file.Length - 192);
+        }
+        byte[] before = await Hash(bindingData);
+        foreach (bool verifyFirst in new[] { false, true })
+        {
+            string output = Path.Combine(bindingRoot, "reject-" + damage + "-" + verifyFirst);
+            await MustRejectCompanion(() => RecoveryService.ExtractAsync(new(bindingLauncher, output, "x"), verifyFirst: verifyFirst));
+            Assert(!Directory.Exists(output), "A replacement companion published plaintext.");
+            Assert(await SameHash(before, bindingData), "Failed extraction changed the replacement companion.");
+        }
+        await MustRejectCompanion(() => RecoveryService.RepairAsync(bindingLauncher));
+        Assert(await SameHash(before, bindingData), "Failed repair changed the replacement companion.");
+        if (damage == "trailer") await MustRejectCompanion(() => RecoveryService.VerifyAsync(bindingLauncher));
+    }
+});
+await Check("matching companion with destroyed header replicas still repairs and extracts", async () =>
+{
+    Assert(matchingData is not null, "Companion fixture was not created.");
+    await File.WriteAllBytesAsync(bindingData, matchingData!);
+    Zero(bindingData, 0, 3 * 2048);
+    byte[] damaged = await Hash(bindingData);
+    foreach (bool verifyFirst in new[] { false, true })
+    {
+        string output = Path.Combine(bindingRoot, "matching-" + verifyFirst);
+        var result = await RecoveryService.ExtractAsync(new(bindingLauncher, output, "x"), verifyFirst: verifyFirst);
+        Assert(result.IsDetached && result.DataPath == bindingData, "Matching companion identity was lost.");
+        Assert(await SameHash(SHA256.HashData(bindingContents), Path.Combine(output, "source.bin")), "Matching companion restored different bytes.");
+        Assert(await SameHash(damaged, bindingData), "Automatic extraction modified the original companion.");
+    }
+    Assert((await RecoveryService.RepairAsync(bindingLauncher)).Repaired, "Matching companion was not repaired.");
+    Assert(await SameHash(SHA256.HashData(matchingData!), bindingData), "Matching companion repair differs from its original bytes.");
+});
 await Check("truncated .2pw is found without its footer, extracted, and repaired", async () =>
 {
     string dir = Path.Combine(work, "截断_日本語");
@@ -308,6 +377,54 @@ await Check("EXE with a lost footer, a lost header replica and payload damage is
     Assert((await RecoveryService.VerifyAsync(exe)).Success, "Repaired EXE does not verify.");
     await PackageService.ExtractAsync(new(exe, Path.Combine(dir, "after-repair"), password));
 });
+await Check("lost footer remains recoverable when every fast sample hits a damaged slice", async () =>
+{
+    string dir = Path.Combine(work, "sampled-slices");
+    Directory.CreateDirectory(dir);
+    byte[] sampleStub = new byte[8192];
+    sampleStub[0] = (byte)'M'; sampleStub[1] = (byte)'Z';
+    string sampleTemplate = Path.Combine(dir, "template.exe");
+    await File.WriteAllBytesAsync(sampleTemplate, sampleStub);
+    string exe = Path.Combine(dir, "sampled.exe");
+    var (_, error) = await RecoveryService.CreateAsync(
+        new(source, exe, [password], PackageCompression.None, sampleTemplate, PackageLayout.Embedded), RecoveryService.DefaultPercent);
+    Assert(error is null, error?.ToString() ?? "");
+    var regions = PackageService.LocateRegions(exe);
+    byte[] original = await Hash(exe);
+    long blockSize = (Math.Max((regions.PayloadLength + 1999) / 2000, 4) + 3) & ~3L;
+    int slices = (int)((regions.PayloadLength + blockSize - 1) / blockSize);
+    int first = (int)Math.Min(slices - 1, (6144 + blockSize - 1) / blockSize);
+    int samples = (int)Math.Clamp(64L * 1024 * 1024 / blockSize, 2, 16);
+    int[] selected = Enumerable.Range(0, samples)
+        .Select(i => first + (int)((long)(slices - 1 - first) * i / Math.Max(1, samples - 1))).Distinct().ToArray();
+    foreach (int slice in selected)
+    {
+        long at = (long)slice * blockSize;
+        Flip(exe, regions.PayloadOffset + at + Math.Min(31, regions.PayloadLength - at - 1));
+    }
+    // With the locating footer present, the native engine must prove this
+    // exact damage is within capacity and can restore the complete original.
+    string control = Path.Combine(dir, "with-footer.exe");
+    File.Copy(exe, control);
+    var before = await RecoveryService.VerifyAsync(control);
+    Assert(before.Repairable && before.DamagedBlocks == selected.Length && before.RecoveryBlocks >= selected.Length, before.Summary);
+    Assert((await RecoveryService.RepairAsync(control)).Repaired && await SameHash(original, control),
+        "Control repair did not restore the exact original package.");
+    using (var file = new FileStream(exe, FileMode.Open, FileAccess.Write, FileShare.None)) file.SetLength(file.Length - 192);
+    byte[] damaged = await Hash(exe);
+    Assert(PackageService.FindPayloadCandidates(exe).Offsets.Count == 3, "Fixture did not exercise multiple candidate starts.");
+    Assert(RecoveryService.HasRecovery(exe), "Sampled-point damage hid intact recovery records.");
+    var check = await RecoveryService.VerifyAsync(exe);
+    Assert(check.Repairable && check.DamagedBlocks == selected.Length, check.Summary);
+    string output = Path.Combine(dir, "output");
+    await RecoveryService.ExtractAsync(new(exe, output, password));
+    Assert(await SameHash(SHA256.HashData(contents), Path.Combine(output, Path.GetFileName(source))),
+        "Recovered output differs from the original source.");
+    Assert(await SameHash(damaged, exe), "Automatic recovery modified the damaged source package.");
+    var fixedPackage = await RecoveryService.RepairAsync(exe);
+    Assert(fixedPackage is { Success: true, Repaired: true } && await SameHash(original, exe),
+        "Manual repair did not restore every original package byte.");
+});
 await Check("a file cut inside its payload is reported, not guessed", async () =>
 {
     string cut = Path.Combine(work, "cut.2pw");
@@ -343,6 +460,17 @@ async Task Check(string name, Func<Task> action)
 }
 static void Assert(bool condition, string message) { if (!condition) throw new Exception(message); }
 static async Task MustFail(Func<Task> action) { try { await action(); } catch { return; } throw new Exception("Expected operation to fail."); }
+static async Task MustRejectCompanion(Func<Task> action)
+{
+    try { await action(); }
+    catch (PackageException error)
+    {
+        Assert(error.Message == TwoPassword.Localization.Text.Get("旁边的 .2pw 数据文件与此解密程序不匹配。请使用创建时产生的完整配套文件。"),
+            "Expected the companion identity error, got: " + error.Message);
+        return;
+    }
+    throw new Exception("A mismatched companion was accepted.");
+}
 static async Task<byte[]> Hash(string path) { await using var input = File.OpenRead(path); return await SHA256.HashDataAsync(input); }
 static async Task<bool> SameHash(byte[] expected, string path, long offset = 0, long length = -1)
 {
