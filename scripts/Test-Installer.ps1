@@ -157,6 +157,7 @@ using System;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 namespace TwoPassword.InstallerSmoke {
@@ -165,7 +166,26 @@ namespace TwoPassword.InstallerSmoke {
         public string VolumeSerial { get; set; }
         public string FileId { get; set; }
     }
+    public sealed class ShortcutDetails {
+        public string TargetPath { get; set; }
+        public string WorkingDirectory { get; set; }
+        public string Arguments { get; set; }
+    }
     public static class NativeMsi {
+        // These are the first eight methods in the native IShellLinkW vtable.
+        // Explicit LPWStr marshalling avoids the system ANSI code page.
+        [ComImport, Guid("000214F9-0000-0000-C000-000000000046"),
+            InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IShellLinkW {
+            void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder path, int size, IntPtr findData, uint flags);
+            void GetIDList(out IntPtr itemIdList);
+            void SetIDList(IntPtr itemIdList);
+            void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder description, int size);
+            void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string description);
+            void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder directory, int size);
+            void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string directory);
+            void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder arguments, int size);
+        }
         [StructLayout(LayoutKind.Sequential)]
         struct FileIdInfo {
             public ulong VolumeSerial;
@@ -205,6 +225,30 @@ namespace TwoPassword.InstallerSmoke {
 
         static void Check(uint result, string operation) {
             if (result != 0) throw new Win32Exception((int)result, operation);
+        }
+        public static ShortcutDetails ReadShortcut(string path) {
+            object instance = Activator.CreateInstance(Type.GetTypeFromCLSID(
+                new Guid("00021401-0000-0000-C000-000000000046"), true));
+            try {
+                // IPersistFile.Load uses a Unicode path. STGM_READ opens the existing
+                // link; do not Resolve, Save, or otherwise alter it during verification.
+                ((IPersistFile)instance).Load(Path.GetFullPath(path), 0);
+                var link = (IShellLinkW)instance;
+                var target = new StringBuilder(32768);
+                var working = new StringBuilder(32768);
+                var arguments = new StringBuilder(32768);
+                link.GetPath(target, target.Capacity, IntPtr.Zero, 4); // SLGP_RAWPATH
+                link.GetWorkingDirectory(working, working.Capacity);
+                link.GetArguments(arguments, arguments.Capacity);
+                if (target.Length == target.Capacity - 1 || working.Length == working.Capacity - 1 ||
+                    arguments.Length == arguments.Capacity - 1)
+                    throw new IOException("Shortcut field may have been truncated.");
+                return new ShortcutDetails {
+                    TargetPath = target.ToString(),
+                    WorkingDirectory = working.ToString(),
+                    Arguments = arguments.ToString()
+                };
+            } finally { Marshal.FinalReleaseComObject(instance); }
         }
         public static PathIdentity ResolveExistingPath(string path) {
             if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path))
@@ -348,8 +392,9 @@ namespace TwoPassword.InstallerSmoke {
     }
     $workspace = Join-Path $repo ('artifacts/install-smoke/' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $workspace | Out-Null
-    # Exercise Unicode and spaces in INSTALLFOLDER without touching the default app directory.
-    $installDirectory = Join-Path $workspace '应用 install'
+    # Include characters outside common ANSI code pages, plus spaces, so a
+    # code-page-dependent shortcut reader cannot pass only on one locale.
+    $installDirectory = Join-Path $workspace '应用-日本語-العربية-🔐 install'
     $installLog = Join-Path $workspace 'install.log'
     $uninstallLog = Join-Path $workspace 'uninstall.log'
     $attemptedInstall = $true
@@ -367,41 +412,55 @@ namespace TwoPassword.InstallerSmoke {
     }
     $shortcutPath = Join-Path $menuDirectory '2Password.lnk'
     Assert-Check 'Current-user Start Menu shortcut exists' (Test-Path -LiteralPath $shortcutPath -PathType Leaf)
-    $shell = New-Object -ComObject WScript.Shell
+    $shell = $null
     $shortcut = $null
     try {
+        # Keep the previous automation reader only as diagnostic evidence.
+        # The gate below reads the actual link through native Unicode APIs.
+        $shell = New-Object -ComObject WScript.Shell
         $shortcut = $shell.CreateShortcut($shortcutPath)
-        $actualTarget = [string]$shortcut.TargetPath
-        $actualWorkingDirectory = [string]$shortcut.WorkingDirectory
-        $actualArguments = [string]$shortcut.Arguments
-        $targetIdentity = Get-PathIdentity $actualTarget
-        $expectedTargetIdentity = Get-PathIdentity (Join-Path $installDirectory '2Password.exe')
-        $workingIdentity = Get-PathIdentity $actualWorkingDirectory
-        $expectedWorkingIdentity = Get-PathIdentity $installDirectory
-        $targetMatches = Same-PathIdentity $targetIdentity $expectedTargetIdentity
-        $workingDirectoryMatches = Same-PathIdentity $workingIdentity $expectedWorkingIdentity
-        $argumentsMatch = $actualArguments -ceq ''
-        $shortcutDiagnostics = [ordered]@{
-            ShortcutPath = $shortcutPath
-            ActualTarget = $targetIdentity
-            ExpectedTarget = $expectedTargetIdentity
-            ActualWorkingDirectory = $workingIdentity
-            ExpectedWorkingDirectory = $expectedWorkingIdentity
-            ActualArguments = $actualArguments
-            ExpectedArguments = ''
-            TargetMatches = $targetMatches
-            WorkingDirectoryMatches = $workingDirectoryMatches
-            ArgumentsMatch = $argumentsMatch
+        $legacyReader = [ordered]@{
+            TargetPath = [string]$shortcut.TargetPath
+            WorkingDirectory = [string]$shortcut.WorkingDirectory
+            Arguments = [string]$shortcut.Arguments
+            Error = $null
         }
-        $shortcutDetail = $shortcutDiagnostics | ConvertTo-Json -Depth 5 -Compress
-        Write-Host "Shortcut diagnostics: $shortcutDetail"
-        Assert-Check 'Shortcut targets the installed executable' (
-            $targetMatches -and $workingDirectoryMatches -and $argumentsMatch
-        ) $shortcutDetail
+    } catch {
+        $legacyReader = [ordered]@{ Error = $_.Exception.Message }
     } finally {
         if ($null -ne $shortcut) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shortcut) }
-        [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
+        if ($null -ne $shell) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell) }
     }
+    $nativeShortcut = $native::ReadShortcut($shortcutPath)
+    $actualTarget = $nativeShortcut.TargetPath
+    $actualWorkingDirectory = $nativeShortcut.WorkingDirectory
+    $actualArguments = $nativeShortcut.Arguments
+    $targetIdentity = Get-PathIdentity $actualTarget
+    $expectedTargetIdentity = Get-PathIdentity (Join-Path $installDirectory '2Password.exe')
+    $workingIdentity = Get-PathIdentity $actualWorkingDirectory
+    $expectedWorkingIdentity = Get-PathIdentity $installDirectory
+    $targetMatches = Same-PathIdentity $targetIdentity $expectedTargetIdentity
+    $workingDirectoryMatches = Same-PathIdentity $workingIdentity $expectedWorkingIdentity
+    $argumentsMatch = $actualArguments -ceq ''
+    $shortcutDiagnostics = [ordered]@{
+        Reader = 'IShellLinkW/IPersistFile'
+        ShortcutPath = $shortcutPath
+        ActualTarget = $targetIdentity
+        ExpectedTarget = $expectedTargetIdentity
+        ActualWorkingDirectory = $workingIdentity
+        ExpectedWorkingDirectory = $expectedWorkingIdentity
+        ActualArguments = $actualArguments
+        ExpectedArguments = ''
+        TargetMatches = $targetMatches
+        WorkingDirectoryMatches = $workingDirectoryMatches
+        ArgumentsMatch = $argumentsMatch
+        LegacyWScriptReader = $legacyReader
+    }
+    $shortcutDetail = $shortcutDiagnostics | ConvertTo-Json -Depth 5 -Compress
+    Write-Host "Shortcut diagnostics: $shortcutDetail"
+    Assert-Check 'Shortcut targets the installed executable' (
+        $targetMatches -and $workingDirectoryMatches -and $argumentsMatch
+    ) $shortcutDetail
     $keys = Get-ItemProperty -LiteralPath $registryPath
     Assert-Check 'Application component keys are under HKCU' (
         $keys.Installed -eq 1 -and $keys.Documentation -eq 1 -and $keys.StartMenu -eq 1 -and
