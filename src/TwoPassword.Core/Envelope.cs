@@ -11,10 +11,10 @@ internal sealed class Envelope
     internal const int MaxEntries = 1_000_000;
     internal const long MaxBytes = 16L * 1024 * 1024 * 1024 * 1024;
     internal const int FooterSize = RedundantStorage.FooterRegionSize;
-    internal const int FormatVersion = 3;
-    internal static readonly byte[] Magic = "2PWPKG03"u8.ToArray();
-    internal static readonly byte[] TailMagic = "2PWTAIL3"u8.ToArray();
-    internal static readonly byte[] HeaderReplicaMagic = "2PWHDR03"u8.ToArray();
+    internal const int FormatVersion = 1;
+    internal static readonly byte[] Magic = "2PWPKG01"u8.ToArray();
+    internal static readonly byte[] TailMagic = "2PWTAIL1"u8.ToArray();
+    internal static readonly byte[] HeaderReplicaMagic = "2PWHDR01"u8.ToArray();
     internal static readonly UTF8Encoding Utf8 = new(false, true);
     internal readonly byte[] Header;
     internal readonly byte[] Hash;
@@ -50,9 +50,16 @@ internal sealed class Envelope
 
     internal static byte[] PasswordBytes(string password)
     {
-        if (string.IsNullOrEmpty(password)) throw new PackageException(Text.Get("密码不能为空。"));
+        if (password is null) throw new PackageException(Text.Get("密码必须是字符串。"));
         if (password.Length > 1024) throw new PackageException(Text.Get("密码最多支持 1024 个 UTF-16 字符。"));
-        try { return Utf8.GetBytes(password); }
+        try
+        {
+            // V1 prefixes every password equally: empty => 00, U+0000 => 00 00.
+            // This keeps the encoding injective while satisfying Argon2's nonempty-input API.
+            byte[] encoded = new byte[1 + Utf8.GetByteCount(password)];
+            Utf8.GetBytes(password, encoded.AsSpan(1));
+            return encoded;
+        }
         catch (EncoderFallbackException e) { throw new PackageException(Text.Get("密码包含无效的 Unicode 字符。"), e); }
     }
 
@@ -169,6 +176,13 @@ internal sealed class Envelope
         if (footer.Length < RedundantStorage.HeaderRegionSize + MinimumFrameSize)
             throw new PackageException(Text.Get("加密包长度无效。"));
         source.Position = footer.Offset;
+        byte[] header = ReadHeader(source);
+        return new Envelope(header, footer.Offset, footer.Offset + footer.Length, footer.Trailing);
+    }
+
+    /// <summary>Reads and validates the current logical header without requiring a trailer.</summary>
+    internal static byte[] ReadHeader(Stream source)
+    {
         byte[] header = RedundantStorage.ReadHeader(source, HeaderReplicaMagic, MinimumHeaderSize, MaximumHeaderSize);
         if (!header.AsSpan(0, 8).SequenceEqual(Magic) || BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(8)) != FormatVersion ||
             BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(12)) != ChunkSize ||
@@ -183,7 +197,7 @@ internal sealed class Envelope
             files < 0 || dirs < 0 || (long)files + dirs is < 1 or > MaxEntries ||
             total < 0 || total > MaxBytes)
             throw new PackageException(Text.Get("加密包声明的文件数量或数据大小无效。"));
-        return new Envelope(header, footer.Offset, footer.Offset + footer.Length, footer.Trailing);
+        return header;
     }
 }
 

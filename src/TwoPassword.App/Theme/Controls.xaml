@@ -211,6 +211,16 @@
     </Style>
 
     <!-- Inputs -->
+    <Style x:Key="PasswordEye" TargetType="{x:Type local:PasswordRevealButton}" BasedOn="{StaticResource IconButton}">
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="ToolTip" Value="{DynamicResource Ui.HoldToReveal}"/>
+        <Setter Property="AutomationProperties.Name" Value="{DynamicResource Ui.HoldToReveal}"/>
+        <Setter Property="AutomationProperties.HelpText" Value="{DynamicResource Ui.RevealHelp}"/>
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value=".35"/></Trigger>
+        </Style.Triggers>
+    </Style>
+
     <Style TargetType="PasswordBox">
         <Setter Property="Background" Value="{DynamicResource Surface}"/>
         <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
@@ -218,12 +228,13 @@
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="CaretBrush" Value="{DynamicResource Ink}"/>
         <Setter Property="SelectionBrush" Value="{DynamicResource Selection}"/>
-        <Setter Property="Padding" Value="12,0"/>
+        <Setter Property="Padding" Value="12,0,42,0"/>
         <Setter Property="Height" Value="40"/>
         <Setter Property="FontSize" Value="14"/>
         <Setter Property="MaxLength" Value="1024"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="KeyboardNavigation.TabNavigation" Value="Local"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="PasswordBox">
@@ -235,12 +246,36 @@
                             </Border>
                             <!-- TextBoxBase applies Padding to the content host itself. -->
                             <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center" Focusable="False"/>
+                            <TextBox x:Name="PART_RevealedPassword" Visibility="Collapsed" IsReadOnly="True" IsUndoEnabled="False" UndoLimit="0"
+                                     Focusable="False" IsTabStop="False" IsHitTestVisible="False" ContextMenu="{x:Null}"
+                                     Background="{TemplateBinding Background}" Foreground="{TemplateBinding Foreground}" BorderThickness="0"
+                                     Padding="{TemplateBinding Padding}" FontFamily="{TemplateBinding FontFamily}" FontSize="{TemplateBinding FontSize}"
+                                     VerticalContentAlignment="Center" TextWrapping="NoWrap" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
+                                     AutomationProperties.AutomationId="{Binding Path=(AutomationProperties.AutomationId), RelativeSource={RelativeSource TemplatedParent}, StringFormat={}{0}.Preview}">
+                                <TextBox.Template>
+                                    <ControlTemplate TargetType="TextBox">
+                                        <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center" Focusable="False"/>
+                                    </ControlTemplate>
+                                </TextBox.Template>
+                            </TextBox>
+                            <local:PasswordRevealButton x:Name="PART_RevealButton" Style="{StaticResource PasswordEye}" Content="&#xE890;"
+                                                        PasswordOwner="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                                        HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,5,0"
+                                                        AutomationProperties.AutomationId="{Binding Path=(AutomationProperties.AutomationId), RelativeSource={RelativeSource TemplatedParent}, StringFormat={}{0}.Reveal}"/>
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="local:Field.IsEmpty" Value="True"><Setter TargetName="Hint" Property="Visibility" Value="Visible"/></Trigger>
+                        <Trigger Property="local:Field.IsEmpty" Value="True">
+                            <Setter TargetName="Hint" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="PART_RevealButton" Property="IsEnabled" Value="False"/>
+                        </Trigger>
+                        <Trigger Property="local:Field.IsRevealed" Value="True">
+                            <Setter TargetName="Hint" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Hidden"/>
+                            <Setter TargetName="PART_RevealedPassword" Property="Visibility" Value="Visible"/>
+                        </Trigger>
                         <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Ink3}"/></Trigger>
-                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Ink}"/></Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Ink}"/></Trigger>
                         <Trigger Property="local:Field.IsInvalid" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Danger}"/></Trigger>
                         <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Box" Property="Opacity" Value=".5"/></Trigger>
                     </ControlTemplate.Triggers>

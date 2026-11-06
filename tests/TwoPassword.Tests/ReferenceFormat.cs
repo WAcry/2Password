@@ -11,7 +11,7 @@ namespace TwoPassword.Tests;
 
 internal static partial class Program
 {
-    // Independent v3 reference framing implementation. This intentionally uses only
+    // Independent V1 reference framing implementation. This intentionally uses only
     // public crypto/codec libraries and the documented wire format, never core internals.
     private sealed record ReferenceFrame(byte[] Data, int RawLength, PackageCompression Codec);
 
@@ -38,8 +38,8 @@ internal static partial class Program
         long total, int files, int dirs, PackageCompression compression)
     {
         byte[] header = new byte[124];
-        "2PWPKG03"u8.CopyTo(header);
-        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8), 3);
+        "2PWPKG01"u8.CopyTo(header);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8), 1);
         BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(12), 1024 * 1024);
         header[16] = (byte)compression;
         BinaryPrimitives.WriteInt64LittleEndian(header.AsSpan(20), total);
@@ -55,7 +55,7 @@ internal static partial class Program
         using (var wrapper = new AesGcm(_attackWrappingKey!, 16))
             wrapper.Encrypt(header.AsSpan(64, 12), key, header.AsSpan(76, 32), header.AsSpan(108, 16), slotAad);
         using var output = new MemoryStream();
-        WriteReferenceReplicas(output, "2PWHDR03"u8, header);
+        WriteReferenceReplicas(output, "2PWHDR01"u8, header);
         byte[] hash = SHA256.HashData(header);
         ulong frame = 0;
         using (var aes = new AesGcm(key, 16))
@@ -80,7 +80,7 @@ internal static partial class Program
             }
         }
         long length = output.Length;
-        WriteReferenceFooter(output, "2PWTAIL3"u8, 0, length);
+        WriteReferenceFooter(output, "2PWTAIL1"u8, 0, length);
         CryptographicOperations.ZeroMemory(key);
         string path = Path.Combine(_root, "independent-" + Guid.NewGuid().ToString("N") + ".2pw");
         await File.WriteAllBytesAsync(path, output.ToArray());
@@ -114,20 +114,22 @@ internal static partial class Program
         return compressor.Wrap(raw).ToArray();
     }
 
-    private static async Task<(byte[] Tar, IReadOnlyList<byte> Codecs)> ReferenceDecode(string path)
+    private static async Task<(byte[] Tar, IReadOnlyList<byte> Codecs)> ReferenceDecode(string path, string passwordText = PasswordA)
     {
         byte[] data = await File.ReadAllBytesAsync(path);
         var trailer = data.AsSpan(data.Length - FooterRegion, 64);
-        Assert(trailer[..8].SequenceEqual("2PWTAIL3"u8) && SHA256.HashData(trailer[..32]).AsSpan().SequenceEqual(trailer[32..]),
-            "Reference decoder expects an intact first v3 trailer.");
+        Assert(trailer[..8].SequenceEqual("2PWTAIL1"u8) && SHA256.HashData(trailer[..32]).AsSpan().SequenceEqual(trailer[32..]),
+            "Reference decoder expects an intact first V1 trailer.");
         int offset = checked((int)BinaryPrimitives.ReadInt64LittleEndian(trailer[8..]));
         int end = checked(offset + (int)BinaryPrimitives.ReadInt64LittleEndian(trailer[16..]));
         long recovery = BinaryPrimitives.ReadInt64LittleEndian(trailer[24..]);
         Assert(end + recovery + FooterRegion == data.Length, "Payload, recovery data and trailer do not cover the file.");
+        Assert(data.AsSpan(offset, 8).SequenceEqual("2PWHDR01"u8), "Reference decoder expects a V1 header record.");
         int headerLength = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(offset + 8));
         byte[] header = data.AsSpan(offset + 48, headerLength).ToArray();
-        Assert(header.AsSpan(0, 8).SequenceEqual("2PWPKG03"u8), "Reference decoder expects v3.");
-        byte[] password = Encoding.UTF8.GetBytes(PasswordA);
+        Assert(header.AsSpan(0, 8).SequenceEqual("2PWPKG01"u8) &&
+            BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(8)) == 1, "Reference decoder expects schema V1.");
+        byte[] password = [0, .. new UTF8Encoding(false, true).GetBytes(passwordText)];
         using var kdf = new Argon2id(password)
         {
             Salt = header.AsSpan(48, 16).ToArray(), MemorySize = 65536, Iterations = 3, DegreeOfParallelism = 4

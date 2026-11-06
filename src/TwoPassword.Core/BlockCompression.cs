@@ -14,7 +14,7 @@ internal static class BlockCompression
         bool success;
         int written;
         if (requested == PackageCompression.Brotli)
-            success = BrotliEncoder.TryCompress(plaintext, scratch, out written, quality: 1, window: 20);
+            success = BrotliEncoder.TryCompress(plaintext, scratch, out written, quality: 6, window: 20);
         else if (requested == PackageCompression.Zstd)
         {
             if (compressor is null)

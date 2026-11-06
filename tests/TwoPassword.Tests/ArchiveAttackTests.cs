@@ -19,7 +19,7 @@ internal static partial class Program
     {
         // The independent encoder deliberately does not use internal production code.
         // Cache one derived wrapping key for these known synthetic test credentials.
-        using (var kdf = new Argon2id(Encoding.UTF8.GetBytes(PasswordA))
+        using (var kdf = new Argon2id([0, .. new UTF8Encoding(false, true).GetBytes(PasswordA)])
         { Salt = AttackSalt, MemorySize = 65536, Iterations = 3, DegreeOfParallelism = 4 })
             _attackWrappingKey = kdf.GetBytes(32);
         try

@@ -159,8 +159,11 @@ public static class RecoveryService
         if (location.Regions.RecoveryLength == 0) return new(packagePath, 4, Text.Get("这个加密包没有恢复记录。"));
         using var file = new FileStream(Extended(location.Regions.DataPath), FileMode.Open, FileAccess.Read, FileShare.Read, 131072, FileOptions.SequentialScan);
         var result = Inspect(packagePath, file, location, progress, ct, out _, out _);
-        if (location.Regions.IsDetached && result.DamagedBlocks == 0 && (result.Success || result.Repairable))
-            PackageService.ValidateDetachedPayload(packagePath, file);
+        if (result.DamagedBlocks == 0 && (result.Success || result.Repairable))
+        {
+            PackageService.ValidatePayloadHeader(file, location.Regions.PayloadOffset);
+            if (location.Regions.IsDetached) PackageService.ValidateDetachedPayload(packagePath, file);
+        }
         return result;
     }
 
@@ -173,8 +176,11 @@ public static class RecoveryService
         // Read-write with read sharing: nobody else can change the bytes between checking and writing back.
         using var file = new FileStream(Extended(regions.DataPath), FileMode.Open, FileAccess.ReadWrite, FileShare.Read, 131072, FileOptions.SequentialScan);
         var result = Inspect(packagePath, file, location, progress, ct, out var set, out var damaged);
-        if (regions.IsDetached && damaged.Count == 0 && (result.Success || result.Repairable))
-            PackageService.ValidateDetachedPayload(packagePath, file);
+        if (damaged.Count == 0 && (result.Success || result.Repairable))
+        {
+            PackageService.ValidatePayloadHeader(file, regions.PayloadOffset);
+            if (regions.IsDetached) PackageService.ValidateDetachedPayload(packagePath, file);
+        }
         if (!result.Repairable) return result;
         if (damaged.Count > 0)
         {
@@ -184,6 +190,7 @@ public static class RecoveryService
                 string repaired = await RebuildAsync(file, regions, set!, work, progress, ct).ConfigureAwait(false);
                 ct.ThrowIfCancellationRequested();
                 await using var source = new FileStream(Extended(repaired), FileMode.Open, FileAccess.Read, FileShare.Read, 131072, FileOptions.Asynchronous);
+                PackageService.ValidatePayloadHeader(source, 0);
                 if (regions.IsDetached) PackageService.ValidateDetachedPayload(packagePath, source);
                 foreach (int slice in damaged)
                 {

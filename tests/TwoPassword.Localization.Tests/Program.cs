@@ -35,7 +35,7 @@ internal static class Program
             Check("English neutral resources", () =>
             {
                 Text.UseLanguage("en");
-                Require(Text.Language == "en" && Text.Get("密码不能为空。") == "The password cannot be empty.", "English translation is missing.");
+                Require(Text.Language == "en" && Text.Get("密码必须是字符串。") == "The password must be a string.", "English translation is missing.");
             });
             Check("Formatting preserves multilingual filenames exactly", () =>
             {
@@ -57,12 +57,12 @@ internal static class Program
             Check("Any Chinese UI culture selects the Chinese satellite", () =>
             {
                 CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("zh-HK");
-                Require(Text.Language == "zh-CN" && Text.Get("密码不能为空。") == "密码不能为空。", "zh-HK fallback failed.");
+                Require(Text.Language == "zh-CN" && Text.Get("密码必须是字符串。") == "密码必须是字符串。", "zh-HK fallback failed.");
             });
             Check("Other UI cultures select English", () =>
             {
                 CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr-FR");
-                Require(Text.Language == "en" && Text.Get("密码不能为空。") == "The password cannot be empty.", "English fallback failed.");
+                Require(Text.Language == "en" && Text.Get("密码必须是字符串。") == "The password must be a string.", "English fallback failed.");
             });
             Check("Explicit switch sets thread defaults", () =>
             {
@@ -105,7 +105,7 @@ internal static class Program
                     Text.UseLanguage(language);
                     (string Password, string Key)[] invalid =
                     [
-                        ("", "密码不能为空。"),
+                        (null!, "密码必须是字符串。"),
                         (new string('x', 1025), "密码最多支持 1024 个 UTF-16 字符。"),
                         ("\uD800", "密码包含无效的 Unicode 字符。")
                     ];
@@ -114,6 +114,7 @@ internal static class Program
                         try { PackageService.ValidatePassword(item.Password); throw new InvalidOperationException("Invalid syntax was accepted."); }
                         catch (PackageException e) { Require(e.Message == Text.Get(item.Key), "Password syntax diagnostic is untranslated."); }
                     }
+                    PackageService.ValidatePassword("");
                     PackageService.ValidatePassword("  exact 中文 café cafe\u0301  ");
                 });
             }

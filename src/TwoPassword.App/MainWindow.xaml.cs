@@ -78,6 +78,7 @@ public partial class MainWindow : Window
     private PackageResult? _doneResult;
     private string? _doneWarning;
     private bool _doneEncrypted;
+    private bool _doneWithoutPassword;
 
     /// <param name="initialTarget">Save location for <paramref name="initialPath"/>, or the restore location when it is a package.</param>
     public MainWindow(string? embeddedPackage = null, string? stubOverride = null, string? initialPath = null, bool initialEncrypt = false,
@@ -227,6 +228,7 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && ConcealPasswords()) { e.Handled = true; return; }
         // Between starting an operation and showing its progress screen, the form is frozen.
         if (_busy && _screen != Screen.Working && e.Key != Key.System) { e.Handled = true; return; }
         if (e.Key == Key.Escape && CanGoBack && !(_screen == Screen.Encrypt && HasTypedPasswords()))
@@ -254,6 +256,7 @@ public partial class MainWindow : Window
 
     private void Show(Screen screen, bool animate = true)
     {
+        ConcealPasswords();
         var changed = screen != _screen;
         _screen = screen;
         var current = ViewFor(screen);
@@ -328,6 +331,7 @@ public partial class MainWindow : Window
         _repairResult = null;
         _doneResult = null;
         _doneWarning = null;
+        _doneWithoutPassword = false;
         foreach (var notice in new[] { HomeNotice, EncryptNotice, UnlockNotice, RepairNotice }) Hide(notice);
         OptionsToggle.IsChecked = false;
         Show(Screen.Home);
@@ -746,8 +750,7 @@ public partial class MainWindow : Window
                 output = _outputPath = NextAvailablePackagePath(output);
                 RenderOutput();
             }
-            foreach (var row in _rows)
-                if (!IsEmpty(row.Password)) passwords.Add(row.Password.Password);
+            foreach (var row in _rows) passwords.Add(row.Password.Password);
             options = new CreateOptions(_sourcePath, output, passwords, SelectedCompression(), _stubOverride ?? CommandLine.StandaloneStub(), SelectedLayout());
             redundancy = SelectedRecoveryPercent();
         }
@@ -763,6 +766,7 @@ public partial class MainWindow : Window
         try
         {
             var (package, recoveryError) = await Task.Run(() => RecoveryService.CreateAsync(options, redundancy, PackageProgressSink(), RecoveryProgressSink(), token), token);
+            _doneWithoutPassword = passwords.Any(password => password.Length == 0);
             ClearPasswords();
             var warning = recoveryError is null ? null : L("恢复记录没有生成：{0}", DescribeException(recoveryError));
             if (EndWork()) ShowDone(package, warning, encrypted: true);
@@ -803,14 +807,14 @@ public partial class MainWindow : Window
 
         var password = new PasswordBox();
         password.SetResourceReference(Field.PlaceholderProperty, "Ui.PasswordPlaceholder");
-        var confirmation = new PasswordBox { Padding = new Thickness(12, 0, 34, 0) };
+        var confirmation = new PasswordBox { Padding = new Thickness(12, 0, 66, 0) };
         confirmation.SetResourceReference(Field.PlaceholderProperty, "Ui.ConfirmPlaceholder");
         Grid.SetColumn(confirmation, 2);
         var check = new TextBlock
         {
             Text = "\uE73E", FontFamily = (FontFamily)FindResource("Icons"), FontSize = 12, IsHitTestVisible = false,
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 13, 0), Visibility = Visibility.Collapsed,
+            Margin = new Thickness(0, 0, 44, 0), Visibility = Visibility.Collapsed,
         };
         check.SetResourceReference(TextBlock.ForegroundProperty, "Success");
         Grid.SetColumn(check, 2);
@@ -887,7 +891,6 @@ public partial class MainWindow : Window
             AutomationProperties.SetAutomationId(row.Confirmation, "ConfirmPassword" + (i + 1));
         }
         AddPasswordButton.Visibility = _rows.Count < MaxPasswords ? Visibility.Visible : Visibility.Collapsed;
-        PasswordsHint.Visibility = _rows.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>Marks each row in place. Problems show once a field has been left, or for every row when <paramref name="reveal"/> is set.</summary>
@@ -896,47 +899,34 @@ public partial class MainWindow : Window
         var secrets = _rows.Select(row => (Password: row.Password.SecurePassword, Confirmation: row.Confirmation.SecurePassword)).ToArray();
         try
         {
-            var filled = 0;
             var valid = true;
+            var withoutPassword = secrets.Any(secret => secret.Password.Length == 0 && secret.Confirmation.Length == 0);
+            PasswordsHint.Text = withoutPassword ? L("无需密码，任何人都能解开") : L("任意一个都能解开");
+            PasswordsHint.Visibility = withoutPassword || _rows.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
             for (var i = 0; i < _rows.Count; i++)
             {
                 var row = _rows[i];
                 var (password, confirmation) = secrets[i];
                 string? message = null;
                 bool passwordBad = false, confirmationBad = false, ok = false;
-                if (password.Length > 0 || confirmation.Length > 0)
+                var showPassword = reveal || row.PasswordVisited;
+                var duplicateOf = Array.FindIndex(secrets, 0, i, other => SameSecret(other.Password, password));
+                if (duplicateOf >= 0)
                 {
-                    filled++;
-                    var showPassword = reveal || row.PasswordVisited;
-                    var duplicateOf = password.Length == 0 ? -1
-                        : Array.FindIndex(secrets, 0, i, other => other.Password.Length > 0 && SameSecret(other.Password, password));
-                    if (duplicateOf >= 0)
-                    {
-                        if (showPassword) (message, passwordBad) = (L("和第 {0} 个密码相同", duplicateOf + 1), true);
-                    }
-                    else if (!SameSecret(password, confirmation))
-                    {
-                        if (reveal || row.ConfirmationVisited || confirmation.Length >= password.Length)
-                            (message, confirmationBad) = (confirmation.Length == 0 ? L("再输入一次") : L("两次输入不一致"), true);
-                    }
-                    else ok = true;
-                    valid &= ok;
+                    if (showPassword) (message, passwordBad) = (L("和第 {0} 个密码相同", duplicateOf + 1), true);
                 }
+                else if (!SameSecret(password, confirmation))
+                {
+                    if (reveal || row.ConfirmationVisited || confirmation.Length >= password.Length)
+                        (message, confirmationBad) = (confirmation.Length == 0 ? L("再输入一次") : L("两次输入不一致"), true);
+                }
+                else ok = true;
+                valid &= ok;
                 Field.SetIsInvalid(row.Password, passwordBad);
                 Field.SetIsInvalid(row.Confirmation, confirmationBad);
                 row.Check.Visibility = ok ? Visibility.Visible : Visibility.Collapsed;
                 row.Message.Text = message ?? "";
                 row.Message.Visibility = message is null ? Visibility.Collapsed : Visibility.Visible;
-            }
-            if (filled == 0)
-            {
-                valid = false;
-                if (reveal)
-                {
-                    _rows[0].Message.Text = L("输入一个密码");
-                    _rows[0].Message.Visibility = Visibility.Visible;
-                    Field.SetIsInvalid(_rows[0].Password, true);
-                }
             }
             return valid;
         }
@@ -996,12 +986,24 @@ public partial class MainWindow : Window
 
     private void ClearPasswords()
     {
+        ConcealPasswords();
         foreach (var row in _rows)
         {
             row.Password.Clear();
             row.Confirmation.Clear();
         }
         UnlockPassword.Clear();
+    }
+
+    private bool ConcealPasswords()
+    {
+        var concealed = PasswordRevealButton.Conceal(UnlockPassword);
+        foreach (var row in _rows)
+        {
+            concealed |= PasswordRevealButton.Conceal(row.Password);
+            concealed |= PasswordRevealButton.Conceal(row.Confirmation);
+        }
+        return concealed;
     }
 
     private void PrepareUnlock(string path)
@@ -1121,12 +1123,6 @@ public partial class MainWindow : Window
     {
         if (_busy || _inspecting || _packagePath is null || !DecryptButton.IsEnabled) return;
         Hide(UnlockNotice);
-        if (IsEmpty(UnlockPassword))
-        {
-            UnlockPassword.Focus();
-            Shake(UnlockPassword);
-            return;
-        }
         string destination;
         try
         {
@@ -1266,6 +1262,7 @@ public partial class MainWindow : Window
 
     private void BeginWork(Work work)
     {
+        ConcealPasswords();
         UiText.Pin();
         _busy = true;
         _work = work;
@@ -1319,6 +1316,7 @@ public partial class MainWindow : Window
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
+        ConcealPasswords();
         _operation?.Cancel();
         CancelButton.IsEnabled = false;
         _progressTimer.Stop();
@@ -1416,6 +1414,8 @@ public partial class MainWindow : Window
             AddDoneRow(Path.GetFileName(result.OutputPath), FormatSize(SizeOf(result.OutputPath)), result.OutputPath);
             if (result.DataPath is { } data) AddDoneRow(Path.GetFileName(data), FormatSize(SizeOf(data)), data);
             DoneHint.Text = DoneFiles.Children.Count > 1 ? L("两个文件要放在同一个文件夹里") : "";
+            if (_doneWithoutPassword)
+                DoneHint.Text = L("无需密码，任何人都能解开") + (DoneHint.Text.Length == 0 ? "" : "\n" + DoneHint.Text);
             DonePrimary.Content = L("在文件夹中显示");
             DoneSecondary.Content = L("完成");
         }

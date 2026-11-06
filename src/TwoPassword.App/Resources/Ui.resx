@@ -45,7 +45,10 @@
 
 Passwords are accepted only through redirected standard input, encoded as strict UTF-8 without BOM detection.
 Creation expects a JSON string array. Extraction reads the exact password and removes only one final newline.
-Defaults: Zstd compression, automatic layout, 5% PAR2 recovery data stored inside the package.
+Use [""] to create a package that opens without a password. Extract it with empty standard input or an empty line.
+If any password in the array is empty, anyone can open the whole package without a password.
+Defaults: Zstd (Lv.3) compression, automatic layout, 5% PAR2 recovery data stored inside the package.
+Optional compression: Brotli (Lv.6), or none.
 Detached packages require both the EXE and .2pw in the same folder. The recovery data is in the .2pw.
 Normal extraction authenticates data in one streaming pass. When it finds damage, it repairs a copy from the recovery data and extracts from that copy; the package itself is not changed.
 --verify-first checks the whole package against its recovery data before extraction.
@@ -476,5 +479,17 @@ Recovery exit status: 0 = intact or repaired, 1 = repairable, 2 = not enough rec
   </data>
   <data name="取消" xml:space="preserve">
     <value>Cancel</value>
+  </data>
+  <data name="按住显示密码" xml:space="preserve">
+    <value>Hold to show password</value>
+  </data>
+  <data name="按住鼠标或空格键查看，松开即隐藏" xml:space="preserve">
+    <value>Hold the mouse button or Space to view; release to hide</value>
+  </data>
+  <data name="无需密码，任何人都能解开" xml:space="preserve">
+    <value>No password · Anyone can open</value>
+  </data>
+  <data name="密码（未设置可留空）" xml:space="preserve">
+    <value>Password (leave blank if none)</value>
   </data>
 </root>

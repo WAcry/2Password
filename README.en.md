@@ -35,9 +35,15 @@ The two installers differ only in the setup wizard's language; the app switches 
 
 **Decrypt:** double-click the EXE you received and enter any one of the passwords. If you'd rather not run an EXE someone sent you, drag it into your own copy of 2Password.
 
+**View a password:** hold the eye button beside a password field to reveal it temporarily; release to hide it. This works for passwords, confirmation fields, and decryption.
+
+**No password:** leave a password and its confirmation blank when creating the package; the recipient can click Decrypt with an empty field. If any password pair is blank, anyone can open the entire package without a password. The interface shows this clearly.
+
 **Repair:** choose "Repair a package…" in the ··· menu at the top right, pick the EXE or `.2pw`, and click Check, then Repair if it finds damage. Repair writes the fixed blocks back into the file.
 
 Compression, single EXE versus EXE + `.2pw`, and the amount of recovery data are under Options on the encrypt screen.
+
+Compression defaults to **Zstd (Lv.3)**. Choose **Brotli (Lv.6)** to favor compression ratio, or choose no compression.
 
 **Right-click menu:** turn on "Show in right-click menu" in the ··· menu at the top right. Right-click a file or folder in Explorer and choose "Encrypt with 2Password". `.2pw` files get Decrypt. On Windows 11 these are under "Show more options".
 
@@ -45,7 +51,7 @@ Compression, single EXE versus EXE + `.2pw`, and the amount of recovery data are
 
 ## Tips
 
-- Every password opens the whole package by itself. There's no minimum length, so even one character works, but shorter passwords are easier to guess.
+- Every password opens the whole package by itself. Empty and single-character passwords are allowed; use a strong password in every row when you need confidentiality.
 - A package you've sent can't be taken back. To change passwords, encrypt a new copy.
 - Decrypt to an NTFS drive. FAT32 and exFAT USB sticks can carry packages but can't be the decryption destination.
 - Keep the `.2pw` file in the same folder as the EXE.
@@ -60,7 +66,7 @@ Compression, single EXE versus EXE + `.2pw`, and the amount of recovery data are
 2Password.exe --extract Documents.exe --output NewFolder --password-stdin
 ```
 
-Passwords are read only from standard input: a JSON array of strings when creating, a single line when extracting. `--help` lists every option, including checking and repairing recovery data. `--language en` or `--language zh-CN` sets the message language.
+Passwords are read only from standard input: a JSON array of strings when creating, a single line when extracting. Use `[""]` to create a package without a password, then submit an empty line or end input to decrypt it. `--help` lists every option, including checking and repairing recovery data. `--language en` or `--language zh-CN` sets the message language.
 
 ## Security
 

@@ -65,8 +65,16 @@ internal static partial class Program
         }
         await Run("Wrong password never commits plaintext destination", async () =>
             await ExpectExtractFailure(_package, "absolutely-wrong-password"));
-        await Run("Empty password never commits plaintext destination", async () =>
-            await ExpectExtractFailure(_package, ""));
+        await Run("Empty input is an unrecognized password for a protected package", async () =>
+        {
+            string output = Path.Combine(_root, "protected-empty-input");
+            bool rejected = false;
+            try { await PackageService.ExtractAsync(new(_package, output, "")); }
+            catch (PasswordNotRecognizedException) { rejected = true; }
+            Assert(rejected, "Empty input did not follow the normal password recognition path.");
+            Assert(!Directory.Exists(output) && !File.Exists(output), "Empty input published protected plaintext.");
+            AssertNoStagingRemains();
+        });
         await Run("Password whitespace is not silently trimmed", async () =>
             await ExpectExtractFailure(_package, PasswordC.Trim()));
         await Run("Changed Unicode password never unlocks", async () =>
@@ -81,8 +89,17 @@ internal static partial class Program
             await ExpectCreateFailure(_fixture, []));
         await Run("More than sixteen passwords are rejected", async () =>
             await ExpectCreateFailure(_fixture, Enumerable.Range(0, 17).Select(i => "test-password-" + i).ToArray()));
-        await Run("Empty password in a slot is rejected", async () =>
-            await ExpectCreateFailure(_fixture, [PasswordA, ""]));
+        await Run("Duplicate empty password slots are rejected", async () =>
+            await ExpectCreateFailure(_fixture, ["", ""]));
+        await Run("Null passwords remain invalid for validation, creation and extraction", async () =>
+        {
+            bool rejected = false;
+            try { PackageService.ValidatePassword(null!); }
+            catch (PackageException) { rejected = true; }
+            Assert(rejected, "A null value was accepted as a password string.");
+            await ExpectCreateFailure(_fixture, [null!]);
+            await ExpectExtractFailure(_package, null!);
+        });
         await Run("Oversized password is rejected before KDF allocation", async () =>
             await ExpectCreateFailure(_fixture, [new string('x', 1_000_001)]));
         await Run("Invalid Unicode password is rejected without replacement", async () =>
@@ -95,6 +112,9 @@ internal static partial class Program
         await Run("Zstd independent blocks restore exact data with incompressible fallback", ZstdRoundTrip);
         await Run("Sixteen-password boundary accepts the final independent password", SixteenPasswords);
         await Run("One-character passwords are accepted and stay distinct", OneCharacterPasswords);
+        await Run("An empty password alone restores the exact Unicode tree", EmptyPasswordRoundTrip);
+        await Run("Empty and nonempty slots independently restore the same data in either order", MixedEmptyPasswords);
+        await Run("Empty and U+0000 passwords cannot unlock each other's packages", EmptyAndNulPasswordsStayDistinct);
         await Run("Single-file source preserves original filename and exact bytes", SingleFileRoundTrip);
         await Run("Empty source directory survives a round trip", EmptyDirectoryRoundTrip);
         await Run("Composed and decomposed Unicode passwords remain distinct", UnicodePasswordNormalization);
@@ -385,6 +405,57 @@ internal static partial class Program
         string output = Path.Combine(_root, "empty-output");
         await PackageService.ExtractAsync(new(package, output, PasswordA));
         Assert(Directory.Exists(Path.Combine(output, "empty-source")), "Empty source root was lost.");
+    }
+
+    private static async Task EmptyPasswordRoundTrip()
+    {
+        PackageService.ValidatePassword("");
+        string package = Path.Combine(_root, "empty-password.2pw");
+        await PackageService.CreateAsync(new(_fixture, package, [""]));
+        Assert((await PackageService.InspectAsync(package)).PasswordSlots == 1, "An empty password did not create one key slot.");
+        string output = Path.Combine(_root, "empty-password-output");
+        await PackageService.ExtractAsync(new(package, output, ""));
+        AssertTreeEqual(_fixture, Path.Combine(output, Path.GetFileName(_fixture)));
+        await ExpectExtractFailure(package, " ");
+        AssertReferenceTar((await ReferenceDecode(package, "")).Tar);
+        AssertNoStagingRemains();
+    }
+
+    private static async Task MixedEmptyPasswords()
+    {
+        foreach (bool emptyFirst in new[] { false, true })
+        {
+            string[] passwords = emptyFirst ? ["", PasswordA] : [PasswordA, ""];
+            string name = emptyFirst ? "empty-first" : "empty-last";
+            string package = Path.Combine(_root, name + ".2pw");
+            await PackageService.CreateAsync(new(_fixture, package, passwords));
+            Assert((await PackageService.InspectAsync(package)).PasswordSlots == 2, "An empty slot changed the declared slot count.");
+            for (int slot = 0; slot < passwords.Length; slot++)
+            {
+                string output = Path.Combine(_root, name + "-output-" + slot);
+                await PackageService.ExtractAsync(new(package, output, passwords[slot]));
+                AssertTreeEqual(_fixture, Path.Combine(output, Path.GetFileName(_fixture)));
+            }
+        }
+        AssertNoStagingRemains();
+    }
+
+    private static async Task EmptyAndNulPasswordsStayDistinct()
+    {
+        string source = Path.Combine(_root, "empty-versus-nul.txt");
+        await File.WriteAllTextAsync(source, "The empty string and a NUL character are distinct passwords.");
+        string[] passwords = ["", "\0"];
+        for (int i = 0; i < passwords.Length; i++)
+        {
+            string package = Path.Combine(_root, "empty-versus-nul-" + i + ".2pw");
+            await PackageService.CreateAsync(new(source, package, [passwords[i]]));
+            string output = Path.Combine(_root, "empty-versus-nul-output-" + i);
+            await PackageService.ExtractAsync(new(package, output, passwords[i]));
+            Assert(File.ReadAllText(Path.Combine(output, Path.GetFileName(source))) == File.ReadAllText(source),
+                "The exact empty or NUL password did not restore its own package.");
+            await ExpectExtractFailure(package, passwords[1 - i]);
+        }
+        AssertNoStagingRemains();
     }
 
     private static async Task UnicodePasswordNormalization()

@@ -76,7 +76,7 @@
   <data name="完成" xml:space="preserve"><value>Complete</value></data>
   <data name="完整性校验失败，加密包已损坏或被修改。" xml:space="preserve"><value>Integrity verification failed. The package is damaged or has been modified.</value></data>
   <data name="密码不正确，或加密包已经损坏。" xml:space="preserve"><value>Incorrect password, or the encrypted package is damaged.</value></data>
-  <data name="密码不能为空。" xml:space="preserve"><value>The password cannot be empty.</value></data>
+  <data name="密码必须是字符串。" xml:space="preserve"><value>The password must be a string.</value></data>
   <data name="密码包含无效的 Unicode 字符。" xml:space="preserve"><value>The password contains invalid Unicode.</value></data>
   <data name="密码最多支持 1024 个 UTF-16 字符。" xml:space="preserve"><value>A password may contain at most 1024 UTF-16 code units.</value></data>
   <data name="归档中的相对路径无效。" xml:space="preserve"><value>An archive relative path is invalid.</value></data>

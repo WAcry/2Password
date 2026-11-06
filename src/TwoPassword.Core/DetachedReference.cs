@@ -11,9 +11,9 @@ namespace TwoPassword.Core;
 /// </summary>
 internal sealed record DetachedReference(string FileName, byte[] HeaderHash)
 {
-    internal static readonly byte[] FooterMagic = "2PWLINK2"u8.ToArray();
-    private static readonly byte[] DescriptorMagic = "2PWREF02"u8.ToArray();
-    private static readonly byte[] ReplicaMagic = "2PWLHDR2"u8.ToArray();
+    internal static readonly byte[] FooterMagic = "2PWLINK1"u8.ToArray();
+    private static readonly byte[] DescriptorMagic = "2PWREF01"u8.ToArray();
+    private static readonly byte[] ReplicaMagic = "2PWLHDR1"u8.ToArray();
     private const int FixedSize = 48;
     private const int MaximumNameBytes = 1024;
     internal const int MaximumOverhead = RedundantStorage.HeaderRegionSize + RedundantStorage.FooterRegionSize;

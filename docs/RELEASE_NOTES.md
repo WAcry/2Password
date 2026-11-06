@@ -5,6 +5,9 @@
 把文件或文件夹加密成一个 EXE，设 1 到 16 个密码，任意一个都能打开。收到的人双击就能解密，不用装任何软件。
 
 - 每个密码都能单独解开全部内容，知道一个推不出其他的。
+- 支持无需密码的包：创建时留空，解密时直接打开；任意一组密码留空都会让整个包无需密码。
+- 压缩可选 `Zstd (Lv.3)`（默认）、`Brotli (Lv.6)`，或不压缩。
+- 创建和解密时，按住密码框右侧的眼睛按钮可以临时查看密码，松开后隐藏。
 - 默认附带 5% 的 PAR2 恢复记录，存在加密包里，不另外生成文件。加密包损坏时，解密会自动修复；文件尾部损坏或被截断也能修。
 - 加密后超过 4 GB 时，拆成 EXE 和同目录的 `.2pw` 两个文件。
 - 文件名、空文件夹、时间和属性原样还原，已有文件不会被覆盖。
@@ -21,6 +24,9 @@
 Encrypt a file or folder into a single EXE with 1 to 16 passwords. Any one of them opens it. The recipient double-clicks the EXE to decrypt, with nothing to install.
 
 - Each password unlocks everything on its own, and knowing one doesn't reveal the others.
+- Packages can open without a password: leave a password pair blank when creating and the input blank when decrypting. Any empty password opens the whole package.
+- Choose `Zstd (Lv.3)` (default), `Brotli (Lv.6)`, or no compression.
+- Hold the eye button beside a password field to view it temporarily when creating or decrypting a package; release to hide it.
 - 5% PAR2 recovery data is stored inside the package by default, with no extra file. Decryption repairs a damaged package automatically, including a damaged or truncated end of file.
 - Encrypted results larger than 4 GB are split into an EXE and a `.2pw` file in the same folder.
 - Filenames, empty folders, timestamps and attributes come back as they were. Existing files are never overwritten.

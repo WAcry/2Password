@@ -89,7 +89,7 @@ function Get-PackageRegions {
         $record = [byte[]]::new(64)
         $stream.Position = $stream.Length - 192
         [void]$stream.Read($record, 0, 64)
-        if ([Text.Encoding]::ASCII.GetString($record, 0, 8) -ne '2PWTAIL3') { throw "Not a 2Password v3 package: $Path" }
+        if ([Text.Encoding]::ASCII.GetString($record, 0, 8) -ne '2PWTAIL1') { throw "Not a 2Password V1 package: $Path" }
         [pscustomobject]@{ Offset=[BitConverter]::ToInt64($record, 8); Length=[BitConverter]::ToInt64($record, 16); Recovery=[BitConverter]::ToInt64($record, 24); FileLength=$stream.Length }
     } finally { $stream.Dispose() }
 }
@@ -169,6 +169,19 @@ try {
     [void](Invoke-PackageCommand $plainPackage @('--extract-self','--output',$plainDestination,'--password-stdin','--report',(Join-Path $work 'extract-none.json')) $passwords[1])
     if ((Get-FileHash -LiteralPath (Join-Path $source 'random.bin')).Hash -ne (Get-FileHash -LiteralPath (Join-Path $plainDestination 'random.bin')).Hash) { throw 'Uncompressed round-trip hash differs.' }
     $checks.Add([pscustomobject]@{Name='uncompressed single-file self-extractor round-trip';Passed=$true})
+
+    $noPasswordPackage = Join-Path $work '无需密码-Brotli.exe'
+    [void](Invoke-PackageCommand $portable @('--create',$source,'--output',$noPasswordPackage,'--passwords-stdin','--compression','brotli','--recovery-percent','0','--report',(Join-Path $work 'create-empty.json')) '[""]')
+    $noPasswordStandalone = Join-Path $isolatedDir '无需密码.exe'
+    Copy-Item -LiteralPath $noPasswordPackage -Destination $noPasswordStandalone
+    foreach ($inputMode in @('empty-stdin', 'empty-line')) {
+        $noPasswordDestination = Join-Path $work ('no-password-' + $inputMode)
+        $emptyInput = if ($inputMode -eq 'empty-line') { [string][char]13 + [char]10 } else { '' }
+        $measurement = Invoke-PackageCommand $noPasswordStandalone @('--extract-self','--output',$noPasswordDestination,'--password-stdin','--report',(Join-Path $work ($inputMode + '.json'))) $emptyInput
+        if (-not $measurement.BundledRuntimeVerified) { throw 'The no-password self-extractor did not use its bundled runtime.' }
+        Assert-Tree $source (Join-Path $noPasswordDestination ([IO.Path]::GetFileName($source)))
+    }
+    $checks.Add([pscustomobject]@{Name='copied Brotli self-extractor restores exact names and bytes with empty stdin or an empty line';Passed=$true})
 
     $detached = Join-Path $work '双文件包.exe'
     $detachedReport = Join-Path $work 'detached-create.json'

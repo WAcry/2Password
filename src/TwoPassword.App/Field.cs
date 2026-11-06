@@ -15,11 +15,17 @@ public static class Field
     public static readonly DependencyProperty IsInvalidProperty = DependencyProperty.RegisterAttached(
         "IsInvalid", typeof(bool), typeof(Field), new PropertyMetadata(false));
 
+    private static readonly DependencyPropertyKey IsRevealedPropertyKey = DependencyProperty.RegisterAttachedReadOnly(
+        "IsRevealed", typeof(bool), typeof(Field), new PropertyMetadata(false));
+    public static readonly DependencyProperty IsRevealedProperty = IsRevealedPropertyKey.DependencyProperty;
+
     public static string GetPlaceholder(DependencyObject element) => (string)element.GetValue(PlaceholderProperty);
     public static void SetPlaceholder(DependencyObject element, string value) => element.SetValue(PlaceholderProperty, value);
     public static bool GetIsEmpty(DependencyObject element) => (bool)element.GetValue(IsEmptyProperty);
     public static bool GetIsInvalid(DependencyObject element) => (bool)element.GetValue(IsInvalidProperty);
     public static void SetIsInvalid(DependencyObject element, bool value) => element.SetValue(IsInvalidProperty, value);
+    public static bool GetIsRevealed(DependencyObject element) => (bool)element.GetValue(IsRevealedProperty);
+    internal static void SetIsRevealed(DependencyObject element, bool value) => element.SetValue(IsRevealedPropertyKey, value);
 
     private static void OnPlaceholderChanged(DependencyObject element, DependencyPropertyChangedEventArgs e)
     {

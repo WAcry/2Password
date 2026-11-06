@@ -13,7 +13,7 @@
 - `Konscious.Security.Cryptography.Argon2` 提供 Argon2id 密码派生；应用不自行实现 Argon2。
 - .NET `System.Security.Cryptography.AesGcm` 提供 AES-256-GCM；随机数来自 `RandomNumberGenerator`。
 - .NET `System.Formats.Tar` 的 PAX writer/reader 提供标准归档；文件名按 UTF-8 无损处理。
-- 默认 Zstandard 压缩由 `ZstdSharp.Port` 提供；可选 Brotli 由 .NET `BrotliEncoder` / `BrotliDecoder` 提供。每个数据块独立压缩，也可以完全不压缩。
+- 默认 Zstd (Lv.3) 压缩由 `ZstdSharp.Port` 提供；可选 Brotli (Lv.6) 由 .NET `BrotliEncoder` / `BrotliDecoder` 提供。每个数据块独立压缩，也可以完全不压缩。
 - 可选恢复记录由内置、校验固定 SHA-256 的 `par2cmdline-turbo 1.5.0` 提供。随程序提供对应源码和 GPL 许可文本。
 
 多密码信封格式、流式认证记录、文件系统处理和界面由本项目实现，审阅时应重点看这一部分。
@@ -22,7 +22,7 @@
 
 每个包生成一个随机 256 位内容密钥。每个密码拥有独立随机盐，使用 Argon2id 派生独立的密钥包装密钥，再以 AES-256-GCM 包装同一个内容密钥。包只保存盐、nonce、密文和认证标签，不保存明文密码，也没有可以“列出其他密码”的密码表。
 
-当前容器格式版本 2 的参数固定为：
+容器格式 V1 的参数固定为：
 
 | 参数 | 值 |
 |---|---|
@@ -40,7 +40,9 @@
 
 知道一个密码会得到内容密钥，但推不出其他密码；其他密码仍然可以被离线字典猜测。**整个包的实际保密性取决于最弱的那个密码**，加一个弱密码就会降低整个包的防护。已经发出去的副本无法撤回。
 
-密码按原始 Unicode 字符序列编码，不去除首尾空格、不自动改变大小写、不进行 NFC/NFD 归一化。无效 Unicode、空密码、重复密码及超长输入会被拒绝。
+密码按原始 Unicode 字符序列编码，不去除首尾空格、不自动改变大小写、不进行 NFC/NFD 归一化。允许空字符串；任意一个密码为空时，整个包都可以用空输入解开，文件内容和文件名不再具有密码保密性。无效 Unicode、null、重复密码及超长输入会被拒绝。
+
+V1 对所有密码统一使用 `0x00 || StrictUTF8(password)` 作为 Argon2id 输入。固定前缀让空字符串也能由当前依赖库处理，同时保持不同密码的编码一一对应；空字符串、空格和 U+0000 字符互不等同。
 
 ## 内容认证与解析
 

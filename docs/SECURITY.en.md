@@ -13,7 +13,7 @@ Anyone holding **one valid password can read all contents**. Each password works
 - `Konscious.Security.Cryptography.Argon2` implements Argon2id password derivation. The application does not implement Argon2 itself.
 - .NET `System.Security.Cryptography.AesGcm` provides AES-256-GCM; randomness comes from `RandomNumberGenerator`.
 - .NET `System.Formats.Tar` supplies standard PAX archive writing and reading. Names are represented losslessly as UTF-8.
-- `ZstdSharp.Port` supplies the default Zstandard compression. Optional Brotli uses .NET `BrotliEncoder` / `BrotliDecoder`. Blocks are compressed independently; no compression is also supported.
+- `ZstdSharp.Port` supplies the default Zstd (Lv.3) compression. Optional Brotli (Lv.6) uses .NET `BrotliEncoder` / `BrotliDecoder`. Blocks are compressed independently; no compression is also supported.
 - The optional recovery component is bundled `par2cmdline-turbo 1.5.0`, checked against a pinned SHA-256. Its corresponding source and GPL license text are distributed with the application.
 
 The multiple-password envelope, streaming authenticated records, filesystem handling, and user interface are this project's own code, and that is where review should focus.
@@ -22,7 +22,7 @@ The multiple-password envelope, streaming authenticated records, filesystem hand
 
 Each package receives a random 256-bit content key. Each password has an independent random salt and derives its own wrapping key through Argon2id. AES-256-GCM wraps the same content key independently under each wrapping key. The package stores salts, nonces, ciphertext, and authentication tags, never plaintext passwords or a password list that can expose the other passwords.
 
-Container format version 2 fixes the following parameters:
+Container format V1 uses the following fixed parameters:
 
 | Parameter | Value |
 | --- | --- |
@@ -40,7 +40,9 @@ These Argon2id parameters follow the lower-memory recommended option in [RFC 910
 
 A valid password reveals the content key, but the content key does not reveal the other passwords. Those passwords can still be attacked with offline dictionary guessing. **The weakest valid password determines the package's practical confidentiality**, so adding a weak password weakens the whole package. Copies already sent cannot be revoked.
 
-Passwords retain their exact Unicode character sequence. The application does not trim whitespace, change case, or normalize NFC/NFD. Invalid Unicode, empty passwords, duplicates, and oversized input are rejected.
+Passwords retain their exact Unicode character sequence. The application does not trim whitespace, change case, or normalize NFC/NFD. An empty string is allowed: if any password is empty, anyone can open the entire package with empty input, so its contents and filenames have no password confidentiality. Invalid Unicode, null, duplicates, and oversized input are rejected.
+
+V1 uses `0x00 || StrictUTF8(password)` as the Argon2id input for every password. The fixed prefix lets the dependency process an empty string while preserving a one-to-one encoding of passwords; an empty string, a space, and the U+0000 character remain distinct.
 
 ## Content authentication and parsing
 

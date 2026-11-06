@@ -16,6 +16,20 @@ internal static partial class Program
         var frames = FindFrames(original);
         Assert(frames.Count >= 4 && frames[^1].Length == 28, "Fixture needs full frames and terminal.");
 
+        await Run("Unknown logical schema versions are rejected before password work", async () =>
+        {
+            foreach (int version in new[] { 0, 2, 3, int.MaxValue })
+            {
+                byte[] changed = RewriteLogicalHeader(original, header =>
+                    BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8), version));
+                string path = Path.Combine(_root, "unsupported-schema-" + version + ".2pw");
+                await File.WriteAllBytesAsync(path, changed);
+                bool rejected = false;
+                try { await PackageService.InspectAsync(path); }
+                catch (PackageException) { rejected = true; }
+                Assert(rejected, "Inspection accepted an unsupported schema version: " + version);
+            }
+        });
         await Run("Unused password slot tampering in all replicas fails with first password", async () =>
         {
             byte[] damaged = RewriteLogicalHeader(original, header => header[48 + 2 * 76 + 60] ^= 1);
@@ -151,14 +165,14 @@ internal static partial class Program
         await Run("Damaged footer pretending to be detached does not defeat good replicas", async () =>
         {
             byte[] damaged = (byte[])original.Clone();
-            "2PWLINK2"u8.CopyTo(damaged.AsSpan(end));
+            "2PWLINK1"u8.CopyTo(damaged.AsSpan(end));
             string path = Path.Combine(_root, "damaged-routing.2pw");
             await File.WriteAllBytesAsync(path, damaged);
             string output = Path.Combine(_root, "damaged-routing-output");
             await PackageService.ExtractAsync(new(path, output, PasswordA));
             AssertTreeEqual(_fixture, Path.Combine(output, Path.GetFileName(_fixture)));
         });
-        await Run("Independent v3 reader authenticates frames and decodes standard PAX", async () =>
+        await Run("Independent V1 reader authenticates frames and decodes standard PAX", async () =>
         {
             var decoded = await ReferenceDecode(_package);
             AssertReferenceTar(decoded.Tar);

@@ -76,7 +76,7 @@
   <data name="完成" xml:space="preserve"><value>完成</value></data>
   <data name="完整性校验失败，加密包已损坏或被修改。" xml:space="preserve"><value>完整性校验失败，加密包已损坏或被修改。</value></data>
   <data name="密码不正确，或加密包已经损坏。" xml:space="preserve"><value>密码不正确，或加密包已经损坏。</value></data>
-  <data name="密码不能为空。" xml:space="preserve"><value>密码不能为空。</value></data>
+  <data name="密码必须是字符串。" xml:space="preserve"><value>密码必须是字符串。</value></data>
   <data name="密码包含无效的 Unicode 字符。" xml:space="preserve"><value>密码包含无效的 Unicode 字符。</value></data>
   <data name="密码最多支持 1024 个 UTF-16 字符。" xml:space="preserve"><value>密码最多支持 1024 个 UTF-16 字符。</value></data>
   <data name="归档中的相对路径无效。" xml:space="preserve"><value>归档中的相对路径无效。</value></data>

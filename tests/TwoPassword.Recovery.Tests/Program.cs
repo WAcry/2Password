@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -46,16 +47,19 @@ await Check("healthy default extraction performs no recovery pass", async () =>
     Assert(progress.Count == 0, "Healthy extraction started recovery.");
     Assert(await SameHash(SHA256.HashData(contents), Path.Combine(output, Path.GetFileName(source))), "Healthy output differs.");
 });
-await Check("wrong password returns directly without recovery", async () =>
+await Check("wrong or unlisted empty password returns directly without recovery", async () =>
 {
-    var progress = new RecoveryEvents();
-    string output = Path.Combine(work, "wrong-password-no-output");
-    bool recognized = false;
-    try { await RecoveryService.ExtractAsync(new(package, output, "wrong-test-password"), recoveryProgress: progress); }
-    catch (PasswordNotRecognizedException) { recognized = true; }
-    Assert(recognized, "Expected the password-specific exception.");
-    Assert(progress.Count == 0 && !Directory.Exists(output), "Wrong password invoked recovery or committed plaintext.");
-    Assert(await SameHash(originalHash!, package), "Wrong password changed ciphertext.");
+    foreach (string wrong in new[] { "wrong-test-password", "" })
+    {
+        var progress = new RecoveryEvents();
+        string output = Path.Combine(work, "wrong-password-no-output-" + wrong.Length);
+        bool recognized = false;
+        try { await RecoveryService.ExtractAsync(new(package, output, wrong), recoveryProgress: progress); }
+        catch (PasswordNotRecognizedException) { recognized = true; }
+        Assert(recognized, "Expected the password-specific exception.");
+        Assert(progress.Count == 0 && !Directory.Exists(output), "Wrong password invoked recovery or committed plaintext.");
+        Assert(await SameHash(originalHash!, package), "Wrong password changed ciphertext.");
+    }
 });
 await Check("explicit precheck checks the payload before authenticated extraction", async () =>
 {
@@ -67,7 +71,7 @@ await Check("explicit precheck checks the payload before authenticated extractio
 });
 await Check("invalid password syntax never starts recovery even with precheck requested", async () =>
 {
-    foreach (string invalid in new[] { "", new string('x', 1025), "broken-" + (char)0xD800 })
+    foreach (string invalid in new[] { new string('x', 1025), "broken-" + (char)0xD800 })
     {
         var progress = new RecoveryEvents();
         string output = Path.Combine(work, "invalid-password-output");
@@ -219,6 +223,12 @@ await Check("single EXE carries its recovery data and survives payload damage", 
     Assert(Directory.GetFiles(dir).Length == 1, "Embedded layout produced more than one file.");
     var regions = PackageService.LocateRegions(exe);
     Assert(regions.PayloadOffset == stub.Length && regions.DataPath == exe, "Embedded regions are wrong.");
+    using (var file = File.OpenRead(exe))
+    {
+        file.Position = 17;
+        PackageService.ValidatePayloadHeader(file, regions.PayloadOffset);
+        Assert(file.Position == 17, "Successful header validation changed the caller's stream position.");
+    }
     byte[] before = await Hash(exe);
     Flip(exe, regions.PayloadOffset + regions.PayloadLength - 100);
     string output = Path.Combine(dir, "output");
@@ -348,8 +358,8 @@ await Check("EXE with a lost footer, a lost header replica and payload damage is
     // A larger stub that contains the header magic, as the real stub does, followed by bytes that are not a valid record.
     byte[] decoy = RandomNumberGenerator.GetBytes(8192);
     decoy[0] = (byte)'M'; decoy[1] = (byte)'Z';
-    "2PWHDR03"u8.CopyTo(decoy.AsSpan(700));
-    "2PWHDR03"u8.CopyTo(decoy.AsSpan(5000));
+    "2PWHDR01"u8.CopyTo(decoy.AsSpan(700));
+    "2PWHDR01"u8.CopyTo(decoy.AsSpan(5000));
     string decoyTemplate = Path.Combine(dir, "decoy.exe");
     await File.WriteAllBytesAsync(decoyTemplate, decoy);
     string exe = Path.Combine(dir, "尾部.exe");
@@ -425,6 +435,58 @@ await Check("lost footer remains recoverable when every fast sample hits a damag
     Assert(fixedPackage is { Success: true, Repaired: true } && await SameHash(original, exe),
         "Manual repair did not restore every original package byte.");
 });
+await Check("an empty password slot repairs damaged ciphertext without changing the source package", async () =>
+{
+    string emptyPackage = Path.Combine(work, "empty-slot-recovery.2pw");
+    var (_, error) = await RecoveryService.CreateAsync(new(source, emptyPackage, ["", password], PackageCompression.None), RecoveryService.DefaultPercent);
+    Assert(error is null, error?.ToString() ?? "");
+    var regions = PackageService.LocateRegions(emptyPackage);
+    Flip(emptyPackage, regions.PayloadOffset + regions.PayloadLength / 2);
+    byte[] damaged = await Hash(emptyPackage);
+    var progress = new RecoveryEvents();
+    string output = Path.Combine(work, "empty-slot-restored");
+    await RecoveryService.ExtractAsync(new(emptyPackage, output, ""), recoveryProgress: progress);
+    Assert(progress.Count > 0, "The valid empty password did not reach ciphertext recovery.");
+    Assert(await SameHash(SHA256.HashData(contents), Path.Combine(output, Path.GetFileName(source))), "Empty-slot recovery restored different bytes.");
+    Assert(await SameHash(damaged, emptyPackage), "Empty-slot recovery changed the source package.");
+});
+await Check("recovery rejects an unsupported schema with intact parity and a missing trailer", async () =>
+{
+    string unsupported = Path.Combine(work, "unsupported-schema-no-trailer.2pw");
+    await CreateUnsupportedSchema(unsupported);
+    using (var file = new FileStream(unsupported, FileMode.Open, FileAccess.Write, FileShare.None))
+        file.SetLength(file.Length - 192);
+    byte[] unchanged = await Hash(unsupported);
+    Assert(RecoveryService.HasRecovery(unsupported), "Fixture recovery records could not be located.");
+    using (var file = File.OpenRead(unsupported))
+    {
+        file.Position = 17;
+        await MustRejectSchema(() => { PackageService.ValidatePayloadHeader(file, 0); return Task.CompletedTask; });
+        Assert(file.Position == 17, "Rejected header validation changed the caller's stream position.");
+    }
+    await MustRejectSchema(() => RecoveryService.VerifyAsync(unsupported));
+    await MustRejectSchema(() => RecoveryService.RepairAsync(unsupported));
+    foreach (bool verifyFirst in new[] { false, true })
+    {
+        string output = Path.Combine(work, "unsupported-schema-output-" + verifyFirst);
+        await MustRejectSchema(() => RecoveryService.ExtractAsync(new(unsupported, output, password), verifyFirst: verifyFirst));
+        Assert(!Directory.Exists(output), "Unsupported schema published plaintext.");
+    }
+    Assert(await SameHash(unchanged, unsupported), "Unsupported schema repair changed the original package.");
+});
+await Check("native reconstruction rejects an unsupported schema before any writeback", async () =>
+{
+    string unsupported = Path.Combine(work, "unsupported-schema-rebuild.2pw");
+    await CreateUnsupportedSchema(unsupported);
+    // Every original header replica is unreadable. Its repaired bytes honestly
+    // match the PAR2 set, but still declare an unsupported logical version.
+    for (int copy = 0; copy < 3; copy++) Flip(unsupported, copy * 2048 + 56);
+    byte[] unchanged = await Hash(unsupported);
+    var check = await RecoveryService.VerifyAsync(unsupported);
+    Assert(check.Repairable && check.DamagedBlocks == 3 && check.RecoveryBlocks >= 3, check.Summary);
+    await MustRejectSchema(() => RecoveryService.RepairAsync(unsupported));
+    Assert(await SameHash(unchanged, unsupported), "Rejected reconstructed schema changed original slices or trailer.");
+});
 await Check("a file cut inside its payload is reported, not guessed", async () =>
 {
     string cut = Path.Combine(work, "cut.2pw");
@@ -458,8 +520,48 @@ async Task Check(string name, Func<Task> action)
     try { await action(); passed++; checks.Add(new { Name = name, Passed = true }); Console.WriteLine("PASS " + name); }
     catch (Exception e) { failed++; checks.Add(new { Name = name, Passed = false, Error = e.Message }); Console.WriteLine("FAIL " + name + " :: " + e); }
 }
+async Task CreateUnsupportedSchema(string path)
+{
+    var writer = RecoveryService.Writer(RecoveryService.DefaultPercent);
+    void FixtureWriter(string payload, long length, Stream output, CancellationToken ct)
+    {
+        // Deliberately violate the normal read-only RecoveryWriter contract only
+        // to construct this malformed fixture. Generate real PAR2 after mutation,
+        // so it faithfully protects the unsupported header rather than repairing it to V1.
+        using (var file = new FileStream(payload, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            byte[] record = new byte[2048];
+            for (int copy = 0; copy < 3; copy++)
+            {
+                file.Position = copy * record.Length;
+                file.ReadExactly(record);
+                int headerLength = BinaryPrimitives.ReadInt32LittleEndian(record.AsSpan(8));
+                Assert(record.AsSpan(0, 8).SequenceEqual("2PWHDR01"u8) && headerLength is >= 124 and <= 1264,
+                    "Unexpected fixture header layout.");
+                BinaryPrimitives.WriteInt32LittleEndian(record.AsSpan(56), 99);
+                SHA256.HashData(record.AsSpan(48, headerLength), record.AsSpan(16, 32));
+                file.Position = copy * record.Length;
+                file.Write(record);
+            }
+        }
+        writer(payload, length, output, ct);
+    }
+    var result = await PackageService.CreateAsync(new(source, path, [password], PackageCompression.None, Recovery: FixtureWriter));
+    Assert(result.RecoveryBytes > 0, "Unsupported-schema fixture has no real recovery data.");
+}
 static void Assert(bool condition, string message) { if (!condition) throw new Exception(message); }
 static async Task MustFail(Func<Task> action) { try { await action(); } catch { return; } throw new Exception("Expected operation to fail."); }
+static async Task MustRejectSchema(Func<Task> action)
+{
+    try { await action(); }
+    catch (PackageException error)
+    {
+        Assert(error.Message == TwoPassword.Localization.Text.Get("加密包版本或加密参数不受支持。"),
+            "Expected a strict schema rejection, got: " + error.Message);
+        return;
+    }
+    throw new Exception("Recovery accepted an unsupported logical schema.");
+}
 static async Task MustRejectCompanion(Func<Task> action)
 {
     try { await action(); }

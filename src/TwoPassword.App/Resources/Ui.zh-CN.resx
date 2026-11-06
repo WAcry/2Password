@@ -45,7 +45,10 @@
 
 密码仅通过重定向的标准输入提供，使用严格 UTF-8，不自动剥离 BOM。
 创建时输入 JSON 密码数组。解密时保留密码原文，仅移除最后一处标准换行。
-默认：Zstd 压缩、自动打包方式、5% PAR2 恢复记录，存在加密包里。
+创建时输入 [""] 可生成无需密码的包；解密时可提供空标准输入或空行。
+数组中只要有一个空密码，任何人都能无需密码打开整个包。
+默认：Zstd (Lv.3) 压缩、自动打包方式、5% PAR2 恢复记录，存在加密包里。
+也可选择 Brotli (Lv.6) 或不压缩。
 双文件包的 EXE 与 .2pw 必须放在同一目录，恢复记录在 .2pw 里。
 正常解包采用单次流式认证。发现损坏时，先用恢复记录修复一份副本，再从副本解包，加密包本身不改动。
 --verify-first 会在解包前先用恢复记录完整检查一次加密包。
@@ -476,5 +479,17 @@
   </data>
   <data name="取消" xml:space="preserve">
     <value>取消</value>
+  </data>
+  <data name="按住显示密码" xml:space="preserve">
+    <value>按住显示密码</value>
+  </data>
+  <data name="按住鼠标或空格键查看，松开即隐藏" xml:space="preserve">
+    <value>按住鼠标或空格键查看，松开即隐藏</value>
+  </data>
+  <data name="无需密码，任何人都能解开" xml:space="preserve">
+    <value>无需密码，任何人都能解开</value>
+  </data>
+  <data name="密码（未设置可留空）" xml:space="preserve">
+    <value>密码（未设置可留空）</value>
   </data>
 </root>

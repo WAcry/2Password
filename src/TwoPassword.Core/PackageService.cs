@@ -34,6 +34,20 @@ public static class PackageService
     public static void ValidateDetachedPayload(string launcherPath, Stream payload) =>
         ResolvedPackage.ValidateDetachedPayload(launcherPath, payload);
 
+    /// <summary>Validates restored current-format metadata without a trailer, preserving the stream position.</summary>
+    public static void ValidatePayloadHeader(Stream payload, long offset)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        long position = payload.Position;
+        try
+        {
+            payload.Position = offset;
+            _ = Envelope.ReadHeader(payload);
+        }
+        finally { payload.Position = position; }
+    }
+
     public static PayloadCandidates FindPayloadCandidates(string path, CancellationToken cancellationToken = default) =>
         ResolvedPackage.Candidates(path, cancellationToken);
 

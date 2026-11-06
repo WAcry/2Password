@@ -26,6 +26,15 @@ internal static partial class Program
                 "Detached pair was not published.");
             Assert(new FileInfo(launcher).Length == stubBytes.Length + HeaderRegion + FooterRegion,
                 "Launcher contains unexpected payload data.");
+            byte[] wire = await File.ReadAllBytesAsync(launcher);
+            for (int copy = 0; copy < 3; copy++)
+            {
+                int record = stubBytes.Length + copy * 2048;
+                Assert(wire.AsSpan(record, 8).SequenceEqual("2PWLHDR1"u8) &&
+                    wire.AsSpan(record + 48, 8).SequenceEqual("2PWREF01"u8) &&
+                    wire.AsSpan(wire.Length - FooterRegion + copy * 64, 8).SequenceEqual("2PWLINK1"u8),
+                    "Detached descriptor records must use the initial V1 wire format.");
+            }
             var info = await PackageService.InspectAsync(launcher);
             Assert(info.IsDetached && info.DataPath == data && info.PasswordSlots == 3, "Detached metadata mismatch.");
             string output = Path.Combine(directory, "roundtrip");
@@ -134,14 +143,14 @@ internal static partial class Program
     private static byte[] MakeReferenceLauncher(byte[] stub, byte[] name, byte[] headerHash)
     {
         byte[] descriptor = new byte[48 + name.Length];
-        "2PWREF02"u8.CopyTo(descriptor);
+        "2PWREF01"u8.CopyTo(descriptor);
         BinaryPrimitives.WriteInt32LittleEndian(descriptor.AsSpan(8), name.Length);
         headerHash.CopyTo(descriptor, 16);
         name.CopyTo(descriptor, 48);
         using var output = new MemoryStream();
         output.Write(stub);
-        WriteReferenceReplicas(output, "2PWLHDR2"u8, descriptor);
-        WriteReferenceFooter(output, "2PWLINK2"u8, stub.Length, HeaderRegion);
+        WriteReferenceReplicas(output, "2PWLHDR1"u8, descriptor);
+        WriteReferenceFooter(output, "2PWLINK1"u8, stub.Length, HeaderRegion);
         return output.ToArray();
     }
 }

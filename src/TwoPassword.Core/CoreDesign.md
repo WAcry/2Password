@@ -1,6 +1,6 @@
-# 2Password core: format v3
+# 2Password core: schema V1
 
-This document describes the implementation in `TwoPassword.Core`. The application writes and reads **v3**. v3 stores PAR2 recovery data inside the package. Earlier in-development v1 and v2 files are not supported.
+This document describes the initial **V1** format implemented in `TwoPassword.Core`. It stores authenticated encrypted content and optional PAR2 recovery data inside the package. The application writes and reads this one schema.
 
 ## Dependencies and data flow
 
@@ -16,7 +16,9 @@ Decoding reverses those operations one authenticated block at a time. The normal
 
 ## Independent passwords
 
-A container has 1–16 distinct, nonempty passwords. Strings are encoded with strict UTF-8 and are never trimmed or normalized. The limit is 1024 UTF-16 code units; invalid surrogate sequences are rejected.
+A container has 1–16 distinct passwords, each of which may be an empty string. An empty slot allows anyone to unpack the container with blank input, even when other slots have nonempty passwords. It uses the same key derivation and authenticated encryption as every other slot. The limit is 1024 UTF-16 code units; null strings and invalid surrogate sequences are rejected. An empty password list and duplicate passwords (including two empty strings) are rejected.
+
+V1 defines the Argon2id password input as `0x00 || StrictUTF8(password)` for **every** slot. Strings are never trimmed or normalized. The fixed prefix makes even the empty string a valid nonempty byte input for the library without merging distinct passwords: empty encodes as `00`, and a single U+0000 character encodes as `00 00`.
 
 Every creation generates a fresh random 32-byte content key. Each password independently derives a 32-byte key-encryption key using Argon2id with a fresh 16-byte salt and fixed parameters:
 
@@ -34,8 +36,8 @@ All integers below are little-endian unless explicitly specified otherwise.
 
 | Offset | Bytes | Value |
 |---:|---:|---|
-| 0 | 8 | ASCII `2PWPKG03` |
-| 8 | 4 | Version = 3 |
+| 0 | 8 | ASCII `2PWPKG01` |
+| 8 | 4 | Version = 1 |
 | 12 | 4 | Raw chunk size = 1,048,576 |
 | 16 | 1 | Requested codec: 0 = none, 1 = Brotli, 2 = Zstd |
 | 17 | 3 | Reserved, zero |
@@ -57,7 +59,7 @@ The payload starts with three identical 2048-byte records: a fixed 6144-byte reg
 
 | Offset | Bytes | Value |
 |---:|---:|---|
-| 0 | 8 | ASCII `2PWHDR03` |
+| 0 | 8 | ASCII `2PWHDR01` |
 | 8 | 4 | Logical header length |
 | 12 | 4 | Reserved, zero |
 | 16 | 32 | SHA-256 of the logical header |
@@ -91,7 +93,7 @@ The 52-byte AAD binds block lengths, codec, reserved bits, ordering and all logi
 
 ### Codec limits
 
-Brotli uses quality 1 and a 1 MiB window for writing. Each decode must finish with exactly the expected output size and consume exactly the authenticated encoded block; extra/truncated compressed data fails.
+Brotli uses quality 6 and a 1 MiB window for writing. Each decode must finish with exactly the expected output size and consume exactly the authenticated encoded block; extra/truncated compressed data fails.
 
 Zstd uses level 3, a maximum 1 MiB window and a frame checksum. Before decoding, the maintained Zstandard parser verifies a single standard frame, dictionary ID 0, exact declared content length, bounded window, and exact compressed-frame extent. Decode uses a caller-owned fixed-size span, never an allocation requested by a frame's claimed output size.
 
@@ -103,7 +105,7 @@ The physical file ends with three 64-byte footer records (192 bytes total):
 
 | Offset | Bytes | Value |
 |---:|---:|---|
-| 0 | 8 | ASCII `2PWTAIL3` |
+| 0 | 8 | ASCII `2PWTAIL1` |
 | 8 | 8 | Payload start offset |
 | 16 | 8 | Payload length: header replicas and blocks |
 | 24 | 8 | Recovery data length, zero when absent |
@@ -137,11 +139,13 @@ Checking hashes the payload slice by slice (the last slice zero-padded to the bl
 
 Repair opens the data file for writing with `FileShare.Read`, copies the payload into a private workspace and writes only the validated packets, each rechecked while copied, as `payload.par2`. It runs `par2 r -B<work> -- <work>\payload.par2`, checks every slice and the whole-payload MD5, and then writes back only the damaged slices in place. Damage-triggered extraction repairs a copy in a workspace beside the destination, frames it as a raw dataset with footer `(0, length, 0)` and extracts from it; the package file is not modified.
 
+When no payload slice is damaged, checking and repair also validate the complete V1 logical header before accepting the result or replacing a footer. After native reconstruction, the restored V1 header is validated before any slice is written back. Detached data must also match the logical-header identity in its launcher.
+
 ### Lost footer
 
 The three footer records are adjacent, so one bad sector or a truncated file removes all of them, and the footer is outside PAR2 coverage. When `LocateRegions` fails with a `PackageException`, the recovery layer rebuilds the regions from the file itself:
 
-1. Candidate payload starts. A launcher whose `2PWLINK2` footer still verifies points at its dataset, which starts at 0. Otherwise `FindHeader` scans forward for `2PWHDR03` and returns the first record whose length, reserved field, SHA-256 and zero padding all check out; an EXE stub can contain the magic as a constant, so the magic alone is not enough. The three replicas are identical and carry no index, so a hit at `h` gives the starts `h`, `h − 2048` and `h − 4096` that are not negative. With no valid record the only candidate is 0.
+1. Candidate payload starts. A launcher whose `2PWLINK1` footer still verifies points at its dataset, which starts at 0. Otherwise `FindHeader` scans forward for `2PWHDR01` and returns the first record whose length, reserved field, SHA-256 and zero padding all check out; an EXE stub can contain the magic as a constant, so the magic alone is not enough. The three replicas are identical and carry no index, so a hit at `h` gives the starts `h`, `h − 2048` and `h − 4096` that are not negative. With no valid record the only candidate is 0.
 2. Payload length. `FindSourceLength` searches backwards from the end of the file for a FileDesc packet that passes its MD5, names `payload` and has a matching FileID. par2 repeats it in every recovery file, so copies sit close to the end.
 3. Recovery set. `Par2Metadata.Read` runs over `[lowest start + length, end of file)` and records where the last intact packet of the set ends. Up to 4096 leading payload bytes are skipped by marker resync.
 4. Start. For each candidate, up to 16 slices (as few as 2 once slices exceed 4 MiB), spread from past the header replicas to the last slice, are hashed against the IFSC table; all-zero slices are skipped. The start with the most matches wins and needs at least one. If every initial sample misses, additional nonzero slices are checked across all candidate starts, capped at `RecoveryBlocks + 1` distinct additional slices or the available slices, until a match is found. Sample hashing uses a fixed 1 MiB buffer, including zero padding, regardless of the PAR2 block size. The recovery length runs from the payload end to the end of the last intact packet.
@@ -158,19 +162,19 @@ Checking then reports exit code 1 even with an intact payload. Repair restores d
 
 Detached layouts require a caller-supplied self-contained decoder stub. No-stub `Auto` creation writes a raw container. The GUI uses its own published standalone executable as the stub.
 
-A detached EXE contains only its decoder stub and a reference descriptor. The descriptor is stored as three 2048-byte replicas plus three 64-byte footer records, giving **6336 bytes** of reference overhead. The sibling dataset carries the complete normal v3 envelope at offset zero, including its recovery data, so a detached package is always exactly two files.
+A detached EXE contains only its decoder stub and a reference descriptor. The descriptor is stored as three 2048-byte replicas plus three 64-byte footer records, giving **6336 bytes** of reference overhead. The sibling dataset carries the complete V1 envelope at offset zero, including its recovery data, so a detached package is always exactly two files.
 
 Logical reference descriptor:
 
 | Offset | Bytes | Value |
 |---:|---:|---|
-| 0 | 8 | ASCII `2PWREF02` |
+| 0 | 8 | ASCII `2PWREF01` |
 | 8 | 4 | Filename byte length |
 | 12 | 4 | Reserved, zero |
 | 16 | 32 | Expected dataset logical-header SHA-256 |
 | 48 | variable | Strict UTF-8 sibling filename |
 
-Reference-record magic is `2PWLHDR2`; reference-footer magic is `2PWLINK2`. Other record/checksum layouts are identical to those above. A reference footer points to the 6144-byte descriptor region, and its recovery length must be zero.
+Reference-record magic is `2PWLHDR1`; reference-footer magic is `2PWLINK1`. Other record/checksum layouts are identical to those above. A reference footer points to the 6144-byte descriptor region, and its recovery length must be zero.
 
 The filename must be a single valid Windows filename ending in `.2pw`, at most 255 UTF-16 code units and 1024 UTF-8 bytes. Absolute paths, separators, traversal, device names, ADS syntax, invalid Unicode and reparse-point parents are rejected. The reader checks the expected header hash before attempting password derivation. References cannot chain recursively. A dataset can also be opened directly without its launcher.
 
