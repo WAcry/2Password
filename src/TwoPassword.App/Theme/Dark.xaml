@@ -1,0 +1,24 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="Bg" Color="#1A1A19"/>
+    <SolidColorBrush x:Key="Surface" Color="#232322"/>
+    <SolidColorBrush x:Key="Raised" Color="#3A3936"/>
+    <SolidColorBrush x:Key="Sunken" Color="#262625"/>
+    <SolidColorBrush x:Key="Hover" Color="#14FFFFFF"/>
+    <SolidColorBrush x:Key="Press" Color="#22FFFFFF"/>
+    <SolidColorBrush x:Key="Line" Color="#302F2D"/>
+    <SolidColorBrush x:Key="LineStrong" Color="#43423E"/>
+    <SolidColorBrush x:Key="Ink" Color="#EEECE8"/>
+    <SolidColorBrush x:Key="Ink2" Color="#ABA79F"/>
+    <SolidColorBrush x:Key="Ink3" Color="#7A766F"/>
+    <SolidColorBrush x:Key="Primary" Color="#EEECE8"/>
+    <SolidColorBrush x:Key="PrimaryHover" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="OnPrimary" Color="#1A1A19"/>
+    <SolidColorBrush x:Key="Danger" Color="#F07A62"/>
+    <SolidColorBrush x:Key="Warning" Color="#E0A458"/>
+    <SolidColorBrush x:Key="Success" Color="#6CC491"/>
+    <SolidColorBrush x:Key="SuccessSoft" Color="#20352A"/>
+    <SolidColorBrush x:Key="Selection" Color="#3D5385"/>
+    <SolidColorBrush x:Key="Thumb" Color="#4A4945"/>
+    <SolidColorBrush x:Key="CloseHover" Color="#C42B1C"/>
+</ResourceDictionary>

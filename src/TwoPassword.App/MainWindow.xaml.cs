@@ -1,225 +1,1487 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
+using System.Security;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Interop;
+using System.Windows.Markup;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using TwoPassword.Core;
 using TwoPassword.Recovery;
 using static TwoPassword.App.UiText;
+using Path = System.IO.Path;
+using SharedText = TwoPassword.Localization.Text;
 
 namespace TwoPassword.App;
 
 public partial class MainWindow : Window
 {
+    private enum Screen { Home, Encrypt, Unlock, Repair, Working, Done }
+    private enum Item { None, Several, Missing, Source, Package, Recovery }
+    private enum Work { Encrypt, Decrypt, Verify, Repair }
+    private enum RepairNext { Verify, Repair, Open }
+
+    private const int MaxPasswords = 16;
+    private const int MinimumLength = 8;
+
     private readonly string? _embeddedPackage;
     private readonly string? _stubOverride;
-    private readonly string? _initialPackage;
-    private readonly List<PasswordEntry> _passwordEntries = [];
+    private readonly string? _initialPath;
+    private readonly List<PasswordRow> _rows = [];
     private readonly DispatcherTimer _progressTimer;
-    private CancellationTokenSource? _operationCancellation;
+    private readonly DispatcherTimer _revealTimer;
+    private readonly Stopwatch _stopwatch = new();
+    private Screen _screen = Screen.Home;
+    private Screen _repairReturn = Screen.Home;
+    private CancellationTokenSource? _operation;
+    private CancellationTokenSource? _measure;
     private PackageProgress? _latestProgress;
     private RecoveryProgress? _latestRecoveryProgress;
-    private string? _sourcePath;
-    private string? _packagePath;
-    private string? _selectedPackagePath;
-    private string? _lastResultPath;
-    private PackageInfo? _packageInfo;
-    private PackageResult? _createdPackage;
-    private RecoveryResult? _createdRecovery;
-    private bool _createdRecoveryIncomplete;
+    private Work _work;
     private bool _busy;
-    private bool _inspecting;
+    private bool _damageSeen;
     private bool _closeWhenFinished;
-    private bool _initialized;
-    private bool _advancedRecovery;
-    private readonly Stopwatch _stopwatch = new();
+    private Item _dragItem;
+    private string? _dragPath;
 
-    public MainWindow(string? embeddedPackage = null, string? stubOverride = null, string? initialPackage = null)
+    private string? _sourcePath;
+    private (int Files, long Bytes)? _sourceSize;
+    private string? _outputPath;
+
+    private string? _packagePath;
+    private PackageInfo? _packageInfo;
+    private string? _packageError;
+    private bool _packageHasRecovery;
+    private bool _inspecting;
+    private bool _wrongPassword;
+    private string? _destinationPath;
+
+    private string? _recoveryPath;
+    private RecoveryResult? _recoveryResult;
+    private bool _recoveryFromRepair;
+    private RepairNext _repairNext;
+
+    private PackageResult? _doneResult;
+    private RecoveryResult? _doneRecovery;
+    private string? _doneWarning;
+    private bool _doneEncrypted;
+
+    public MainWindow(string? embeddedPackage = null, string? stubOverride = null, string? initialPath = null)
     {
         _embeddedPackage = embeddedPackage;
         _stubOverride = stubOverride;
-        _initialPackage = initialPackage;
+        _initialPath = initialPath;
         InitializeComponent();
-        UiText.Apply(Resources);
-        LanguageSelector.SelectedIndex = UiText.Language == "zh-CN" ? 0 : 1;
-        Language = System.Windows.Markup.XmlLanguage.GetLanguage(UiText.Language);
-        FontFamily = new FontFamily(UiText.Language == "en" ? "Segoe UI, Microsoft YaHei UI" : "Microsoft YaHei UI, Segoe UI");
-        VersionLabel.Text = L("版本 {0}", typeof(App).Assembly.GetName().Version?.ToString(3) ?? "1.0.0");
-        var available = SystemParameters.WorkArea;
-        MinWidth = Math.Min(MinWidth, Math.Max(660, available.Width - 24));
-        MinHeight = Math.Min(MinHeight, Math.Max(420, available.Height - 24));
-        Width = Math.Min(Width, available.Width - 24);
-        Height = Math.Min(Height, available.Height - 24);
-        AddPasswordRow();
-        AddPasswordRow();
+        var area = SystemParameters.WorkArea;
+        Width = Math.Min(Width, area.Width - 24);
+        Height = Math.Min(Height, area.Height - 24);
+        MinWidth = Math.Min(MinWidth, Width);
+        MinHeight = Math.Min(MinHeight, Height);
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
         _progressTimer.Tick += (_, _) =>
         {
-            var update = Interlocked.Exchange(ref _latestProgress, null);
-            if (update is not null) UpdateProgress(update);
-            var recoveryUpdate = Interlocked.Exchange(ref _latestRecoveryProgress, null);
-            if (recoveryUpdate is not null) UpdateRecoveryProgress(recoveryUpdate);
+            UiText.Pin();
+            if (Interlocked.Exchange(ref _latestProgress, null) is { } update) ShowProgress(update);
+            if (Interlocked.Exchange(ref _latestRecoveryProgress, null) is { } recovery) ShowProgress(recovery);
         };
-        _initialized = true;
+        // Short operations (most wrong passwords) finish before the progress screen would only flash.
+        _revealTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(280) };
+        _revealTimer.Tick += (_, _) =>
+        {
+            _revealTimer.Stop();
+            if (_busy) Show(Screen.Working);
+        };
+        AddHandler(Keyboard.GotKeyboardFocusEvent, new KeyboardFocusChangedEventHandler((_, _) => UpdateCapsLock()), true);
+        AddPasswordRow();
+        UiText.Apply(Resources);
+        Language = XmlLanguage.GetLanguage(UiText.Language);
         if (_embeddedPackage is not null)
         {
-            CreateNav.Visibility = Visibility.Collapsed;
-            CreatePanel.Visibility = Visibility.Collapsed;
-            ExtractPanel.Visibility = Visibility.Visible;
-            ExtractNav.IsChecked = true;
-            ChoosePackageButton.Visibility = Visibility.Collapsed;
-            ExtractEyebrow.Text = L("YOUR SECURE PACKAGE.");
-            ExtractHeading.Text = L("你的文件，已安全封存。");
-            ExtractIntro.Text = L("这是一个独立加密包。输入有效密码，即可离线解密并完整还原。");
-            ActionButton.Content = L("解密并还原   →");
-            AutomationProperties.SetName(ActionButton, L("解密并还原"));
-            StatusDetail.Text = L("输入密码，选择一个新的还原文件夹。");
-            Title = L("2Password · 解密加密包");
+            AllowDrop = false;
+            PrepareUnlock(_embeddedPackage);
+            Show(Screen.Unlock, animate: false);
         }
+        else Show(Screen.Home, animate: false);
     }
 
-    private void Language_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private static string Version => typeof(App).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+    private static bool Motion => SystemParameters.ClientAreaAnimation;
+    private FrameworkElement[] Views => [HomeView, EncryptView, UnlockView, RepairView, WorkingView, DoneView];
+
+    private FrameworkElement ViewFor(Screen screen) => screen switch
     {
-        if (!_initialized || _busy || _inspecting) return;
-        var language = SelectedTag(LanguageSelector);
-        if (language is not ("en" or "zh-CN") || language == UiText.Language) return;
-        UiText.UseLanguage(language);
-        UiText.Apply(Resources);
-        Language = System.Windows.Markup.XmlLanguage.GetLanguage(UiText.Language);
-        FontFamily = new FontFamily(UiText.Language == "en" ? "Segoe UI, Microsoft YaHei UI" : "Microsoft YaHei UI, Segoe UI");
-        VersionLabel.Text = L("版本 {0}", typeof(App).Assembly.GetName().Version?.ToString(3) ?? "1.0.0");
-        RefreshPasswordRows();
-        if (_embeddedPackage is not null)
-        {
-            ExtractEyebrow.Text = L("YOUR SECURE PACKAGE.");
-            ExtractHeading.Text = L("你的文件，已安全封存。");
-            ExtractIntro.Text = L("这是一个独立加密包。输入有效密码，即可离线解密并完整还原。");
-            Title = L("2Password · 解密加密包");
-        }
-        RefreshPackageDetails();
-        if (_createdPackage is not null) ShowCreatedFiles(_createdPackage, _createdRecovery, _createdRecoveryIncomplete, scrollToTop: false);
-        if (RecoverySummaryCard.Visibility == Visibility.Visible)
-        {
-            RecoverySummaryTitle.Text = L("操作记录");
-            RecoverySummaryText.Text = L("语言已切换。请重新校验，以当前语言查看详细结果。");
-        }
-        ApplyNavigation(scrollToTop: false);
-        try { UiText.SaveLanguage(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        { ShowError(error, L("语言已切换，但设置无法保存")); }
-    }
+        Screen.Encrypt => EncryptView,
+        Screen.Unlock => UnlockView,
+        Screen.Repair => RepairView,
+        Screen.Working => WorkingView,
+        Screen.Done => DoneView,
+        _ => HomeView,
+    };
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        try
+        if (_embeddedPackage is not null) await InspectPackageAsync(_embeddedPackage);
+        else if (!string.IsNullOrWhiteSpace(_initialPath)) await RouteAsync(_initialPath);
+    }
+
+    private void Window_SourceInitialized(object? sender, EventArgs e) => Theme.ApplyFrame(this);
+
+    private void Window_StateChanged(object? sender, EventArgs e)
+    {
+        var maximized = WindowState == WindowState.Maximized;
+        MaximizeButton.Content = maximized ? "\uE923" : "\uE922";
+        AutomationProperties.SetName(MaximizeButton, maximized ? L("还原") : L("最大化"));
+        // A maximized chrome-less window extends past the monitor by its resize frame.
+        var frame = SystemParameters.WindowResizeBorderThickness;
+        RootGrid.Margin = maximized ? new Thickness(frame.Left + 4, frame.Top + 4, frame.Right + 4, frame.Bottom + 4) : new Thickness(0);
+    }
+
+    private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void Maximize_Click(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void Window_Closing(object? sender, CancelEventArgs e)
+    {
+        if (!_busy) { ClearPasswords(); return; }
+        e.Cancel = true;
+        if (_closeWhenFinished) return;
+        if (MessageBox.Show(this, L("正在处理文件。取消并关闭？"), "2Password", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        _closeWhenFinished = true;
+        Cancel_Click(this, new RoutedEventArgs());
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // Between starting an operation and showing its progress screen, the form is frozen.
+        if (_busy && _screen != Screen.Working && e.Key != Key.System) { e.Handled = true; return; }
+        if (e.Key == Key.Escape && CanGoBack && !(_screen == Screen.Encrypt && HasTypedPasswords()))
         {
-            var handle = new WindowInteropHelper(this).Handle;
-            var preference = 2;
-            DwmSetWindowAttribute(handle, 33, ref preference, sizeof(int));
-            var dark = 1;
-            DwmSetWindowAttribute(handle, 20, ref dark, sizeof(int));
+            e.Handled = true;
+            GoBack();
         }
-        catch { /* Cosmetic integration is optional on older Windows. */ }
-        if (_embeddedPackage is not null) await SelectPackageAsync(_embeddedPackage);
-        else if (!string.IsNullOrWhiteSpace(_initialPackage) && File.Exists(_initialPackage))
+    }
+
+    private void Window_PreviewKeyUp(object sender, KeyEventArgs e) => UpdateCapsLock();
+
+    private void Window_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (_busy && _screen != Screen.Working) e.Handled = true;
+    }
+
+    private void Window_Activated(object? sender, EventArgs e) => UpdateCapsLock();
+
+    private bool CanGoBack => !_busy && _screen switch
+    {
+        Screen.Encrypt or Screen.Repair => true,
+        Screen.Unlock or Screen.Done => _embeddedPackage is null,
+        _ => false,
+    };
+
+    private void Show(Screen screen, bool animate = true)
+    {
+        var changed = screen != _screen;
+        _screen = screen;
+        var current = ViewFor(screen);
+        foreach (var view in Views) view.Visibility = view == current ? Visibility.Visible : Visibility.Collapsed;
+        if (changed && current is ScrollViewer scroller) scroller.ScrollToTop();
+        Render();
+        UpdateCapsLock();
+        if (animate && changed) Enter(current);
+        if (changed && screen == Screen.Done) Pop(DoneMark);
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, FocusScreen);
+    }
+
+    private void Render()
+    {
+        BackButton.Visibility = CanGoBack ? Visibility.Visible : Visibility.Collapsed;
+        WindowCaption.Margin = new Thickness(CanGoBack ? 6 : 16, 0, 0, 0);
+        MenuButton.IsEnabled = !_busy;
+        Title = _embeddedPackage is null ? "2Password" : Path.GetFileName(_embeddedPackage) + " · 2Password";
+        switch (_screen)
         {
-            if (_initialPackage.EndsWith(".par2", StringComparison.OrdinalIgnoreCase))
-            {
-                ShowRecoveryTools();
-                SelectRecoveryFile(_initialPackage);
-            }
-            else
-            {
-                ExtractNav.IsChecked = true;
-                await SelectPackageAsync(_initialPackage);
-            }
+            case Screen.Home: RenderDrop(); break;
+            case Screen.Encrypt: RenderSource(); RenderOutput(); ValidatePasswords(); break;
+            case Screen.Unlock: RenderUnlock(); break;
+            case Screen.Repair: RenderRepair(); break;
+            case Screen.Done: RenderDone(); break;
         }
     }
 
-    private void Navigation_Checked(object sender, RoutedEventArgs e)
-    {
-        if (!_initialized || _busy) return;
-        _advancedRecovery = false;
-        ApplyNavigation();
-    }
-
-    private void Navigation_Click(object sender, RoutedEventArgs e)
-    {
-        if (!_initialized || _busy || !_advancedRecovery) return;
-        _advancedRecovery = false;
-        ApplyNavigation();
-    }
-
-    private void ApplyNavigation(bool resetStatus = true, bool scrollToTop = true)
-    {
-        var extracting = ExtractNav.IsChecked == true;
-        var recovering = _advancedRecovery;
-        CreatePanel.Visibility = !extracting && !recovering ? Visibility.Visible : Visibility.Collapsed;
-        ExtractPanel.Visibility = extracting && !recovering ? Visibility.Visible : Visibility.Collapsed;
-        RecoveryPanel.Visibility = recovering ? Visibility.Visible : Visibility.Collapsed;
-        RepairButton.Visibility = recovering ? Visibility.Visible : Visibility.Collapsed;
-        ActionButton.Content = recovering ? L("校验文件   →") : extracting ? L("解密并还原   →") : L("创建加密包   →");
-        AutomationProperties.SetName(ActionButton, recovering ? L("校验文件") : extracting ? L("解密并还原") : L("创建加密包"));
-        if (scrollToTop) ContentScroll.ScrollToTop();
-        if (resetStatus) SetStatus(L("准备就绪"), recovering ? L("选择 PAR2 恢复记录，校验文件或尝试修复。") : extracting ? L("输入密码，选择一个新的还原文件夹。") : L("选择内容，设置密码，然后生成加密包。"));
-    }
-
-    private void ShowRecoveryTools_Click(object sender, RoutedEventArgs e) => ShowRecoveryTools();
-    private void ShowRecoveryTools()
-    {
-        if (_busy || _inspecting) return;
-        ExtractNav.IsChecked = true;
-        _advancedRecovery = true;
-        ApplyNavigation();
-    }
-
-    private void BackToExtract_Click(object sender, RoutedEventArgs e)
+    private void FocusScreen()
     {
         if (_busy) return;
-        _advancedRecovery = false;
-        ExtractNav.IsChecked = true;
-        ApplyNavigation();
+        switch (_screen)
+        {
+            case Screen.Encrypt:
+                ((UIElement?)_rows.FirstOrDefault(row => IsEmpty(row.Password))?.Password ?? EncryptButton).Focus();
+                break;
+            case Screen.Unlock when UnlockPassword.IsEnabled:
+                UnlockPassword.Focus();
+                if (_wrongPassword) UnlockPassword.SelectAll();
+                break;
+            case Screen.Repair: RepairAction.Focus(); break;
+            case Screen.Done: DonePrimary.Focus(); break;
+        }
     }
+
+    private void Back_Click(object sender, RoutedEventArgs e) => GoBack();
+
+    private void GoBack()
+    {
+        if (!CanGoBack) return;
+        if (_screen == Screen.Repair && _repairReturn == Screen.Unlock) Show(Screen.Unlock);
+        else GoHome();
+    }
+
+    private void GoHome()
+    {
+        _measure?.Cancel();
+        ClearPasswords();
+        while (_rows.Count > 1) RemoveRow(_rows[^1], focus: false);
+        foreach (var row in _rows) row.PasswordVisited = row.ConfirmationVisited = false;
+        _sourcePath = null;
+        _sourceSize = null;
+        _outputPath = null;
+        _packagePath = null;
+        _packageInfo = null;
+        _packageError = null;
+        _inspecting = false;
+        _wrongPassword = false;
+        _recoveryPath = null;
+        _recoveryResult = null;
+        _doneResult = null;
+        _doneRecovery = null;
+        _doneWarning = null;
+        foreach (var notice in new[] { HomeNotice, EncryptNotice, UnlockNotice, RepairNotice }) Hide(notice);
+        OptionsToggle.IsChecked = false;
+        Show(Screen.Home);
+    }
+
+    private async Task RouteAsync(string path, bool packagesOnly = false)
+    {
+        string full;
+        try { full = Path.GetFullPath(path); }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException or SecurityException)
+        {
+            ShowNotice(HomeNotice, error);
+            return;
+        }
+        var item = Classify(full);
+        if (packagesOnly && item == Item.Source) ShowNotice(HomeNotice, L("这个文件不是 2Password 加密包。"));
+        else await OpenAsync(full, item);
+    }
+
+    private async Task OpenAsync(string path, Item item)
+    {
+        Hide(HomeNotice);
+        switch (item)
+        {
+            case Item.Source: OpenSource(path); break;
+            case Item.Package: PrepareUnlock(path); Show(Screen.Unlock); await InspectPackageAsync(path); break;
+            case Item.Recovery: OpenRepair(path, Screen.Home); break;
+            case Item.Missing: ShowNotice(HomeNotice, L("找不到此文件或文件夹。")); break;
+        }
+    }
+
+    private static Item Classify(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path)) return Item.Source;
+            if (!File.Exists(path)) return Item.Missing;
+            if (path.EndsWith(".par2", StringComparison.OrdinalIgnoreCase)) return Item.Recovery;
+            if (path.EndsWith(".2pw", StringComparison.OrdinalIgnoreCase)) return Item.Package;
+            if (path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
+                (PackageService.HasPackage(path) || RecoveryService.HasRecoveryFiles(path))) return Item.Package;
+            return Item.Source;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException) { return Item.Source; }
+    }
+
+    private void Menu_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        var menu = new ContextMenu
+        {
+            PlacementTarget = MenuButton,
+            Placement = PlacementMode.Custom,
+            CustomPopupPlacementCallback = (popup, target, _) =>
+                [new CustomPopupPlacement(new Point(target.Width - popup.Width, target.Height + 4), PopupPrimaryAxis.Horizontal)],
+        };
+        menu.Items.Add(LanguageItem("中文", "zh-CN"));
+        menu.Items.Add(LanguageItem("English", "en"));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(MenuEntry(L("修复加密包…"), "MenuRepair", ChooseRecovery));
+        menu.Items.Add(MenuEntry(L("开源许可"), "MenuLicenses", ShowNotices));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = L("版本 {0}", Version), IsEnabled = false });
+        menu.IsOpen = true;
+    }
+
+    private MenuItem LanguageItem(string label, string language)
+    {
+        var item = new MenuItem { Header = label, IsChecked = UiText.Language == language };
+        AutomationProperties.SetAutomationId(item, "Language-" + language);
+        item.Click += (_, _) => SwitchLanguage(language);
+        return item;
+    }
+
+    private static MenuItem MenuEntry(string header, string id, Action action)
+    {
+        var item = new MenuItem { Header = header };
+        AutomationProperties.SetAutomationId(item, id);
+        item.Click += (_, _) => action();
+        return item;
+    }
+
+    private void SwitchLanguage(string language)
+    {
+        if (_busy || language == UiText.Language) return;
+        UiText.UseLanguage(language);
+        UiText.Apply(Resources);
+        Language = XmlLanguage.GetLanguage(UiText.Language);
+        foreach (var notice in new[] { HomeNotice, EncryptNotice, UnlockNotice, RepairNotice }) Hide(notice);
+        RefreshRows();
+        Render();
+        try { UiText.SaveLanguage(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+    }
+
+    private bool AcceptsDrops => !_busy && _embeddedPackage is null;
 
     private void ChooseFile_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog { Title = L("选择要加密的文件"), CheckFileExists = true, Multiselect = false, Filter = L("所有文件|*.*") };
-        if (dialog.ShowDialog(this) == true) SelectSource(dialog.FileName);
+        if (dialog.ShowDialog(this) == true) _ = RouteAsync(dialog.FileName);
     }
 
     private void ChooseFolder_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFolderDialog { Title = L("选择要加密的文件夹"), Multiselect = false };
-        if (dialog.ShowDialog(this) == true) SelectSource(dialog.FolderName);
+        if (dialog.ShowDialog(this) == true) OpenSource(dialog.FolderName);
     }
 
-    private void SelectSource(string path)
+    private void OpenPackage_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = L("打开加密包"), CheckFileExists = true, Multiselect = false,
+            Filter = L("2Password 加密包|*.exe;*.2pw;*.par2|所有文件|*.*"),
+        };
+        if (dialog.ShowDialog(this) == true) _ = RouteAsync(dialog.FileName, packagesOnly: true);
+    }
+
+    private void Window_DragEnter(object sender, DragEventArgs e) => TrackDrag(e);
+    private void Window_DragOver(object sender, DragEventArgs e) => TrackDrag(e);
+
+    private void TrackDrag(DragEventArgs e)
+    {
+        var (item, _) = AcceptsDrops ? Inspect(e.Data) : (Item.None, null);
+        e.Effects = item is Item.Source or Item.Package or Item.Recovery ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+        if (item == _dragItem) return;
+        _dragItem = item;
+        RenderDrop();
+    }
+
+    private void Window_DragLeave(object sender, DragEventArgs e)
+    {
+        var point = e.GetPosition(this);
+        if (point.X > 0 && point.Y > 0 && point.X < ActualWidth && point.Y < ActualHeight) return;
+        _dragItem = Item.None;
+        _dragPath = null;
+        RenderDrop();
+    }
+
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        var (item, path) = AcceptsDrops ? Inspect(e.Data) : (Item.None, null);
+        _dragItem = Item.None;
+        _dragPath = null;
+        RenderDrop();
+        if (path is not null && item is Item.Source or Item.Package or Item.Recovery) _ = OpenAsync(path, item);
+    }
+
+    private (Item Item, string? Path) Inspect(IDataObject data)
+    {
+        string[]? paths;
+        try { paths = data.GetData(DataFormats.FileDrop) as string[]; }
+        catch (Exception error) when (error is COMException or InvalidOperationException) { paths = null; }
+        if (paths is null || paths.Length == 0) return (Item.None, null);
+        if (paths.Length > 1) return (Item.Several, null);
+        if (paths[0] == _dragPath && _dragItem != Item.None) return (_dragItem, _dragPath);
+        _dragPath = paths[0];
+        return (Classify(paths[0]), paths[0]);
+    }
+
+    private void RenderDrop()
+    {
+        var active = _screen == Screen.Home && _dragItem != Item.None;
+        var accepted = active && _dragItem is Item.Source or Item.Package or Item.Recovery;
+        DropTitle.Text = !active ? L("拖入文件或文件夹") : _dragItem switch
+        {
+            Item.Several => L("一次只能放一项"),
+            Item.Package => L("松开，打开加密包"),
+            Item.Recovery => L("松开，检查恢复记录"),
+            Item.Source => L("松开，开始加密"),
+            _ => L("拖入文件或文件夹"),
+        };
+        DropOutline.StrokeDashArray = accepted ? [] : [4, 3];
+        DropOutline.SetResourceReference(Shape.StrokeProperty, accepted ? "Ink" : "LineStrong");
+        if (accepted) DropFill.SetResourceReference(Shape.FillProperty, "Sunken");
+        else DropFill.Fill = Brushes.Transparent;
+        DropButtons.Opacity = active ? 0 : 1;
+        DropButtons.IsHitTestVisible = !active;
+        Lift(accepted && _dragItem == Item.Package);
+    }
+
+    private void Lift(bool up)
+    {
+        if (HomeLock.Template?.FindName("Shackle", HomeLock) is not Shape shackle) return;
+        if (shackle.RenderTransform is not TranslateTransform { IsFrozen: false } shift) shackle.RenderTransform = shift = new TranslateTransform();
+        var target = up ? -4d : 0d;
+        if (!Motion) { shift.BeginAnimation(TranslateTransform.YProperty, null); shift.Y = target; return; }
+        shift.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(target, TimeSpan.FromMilliseconds(180)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+    }
+
+    private void OpenSource(string path)
+    {
+        _sourcePath = path;
+        _sourceSize = null;
+        var trimmed = Path.TrimEndingDirectorySeparator(path);
+        var parent = Path.GetDirectoryName(trimmed);
+        if (string.IsNullOrEmpty(parent)) parent = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        var name = Path.GetFileName(trimmed);
+        Hide(EncryptNotice);
+        try { _outputPath = NextAvailablePackagePath(Path.Combine(parent, (string.IsNullOrEmpty(name) ? L("加密文件") : name) + ".protected.exe")); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            _outputPath = null;
+            ShowNotice(EncryptNotice, error);
+        }
+        Show(Screen.Encrypt);
+        MeasureSource(path);
+    }
+
+    private async void MeasureSource(string path)
+    {
+        _measure?.Cancel();
+        var measure = _measure = new CancellationTokenSource();
+        try
+        {
+            var size = await Task.Run(() => Measure(path, measure.Token), measure.Token);
+            if (!measure.IsCancellationRequested && _sourcePath == path)
+            {
+                _sourceSize = size;
+                RenderSource();
+            }
+        }
+        catch (Exception error) when (error is OperationCanceledException or IOException or UnauthorizedAccessException or SecurityException) { }
+        finally
+        {
+            if (_measure == measure) _measure = null;
+            measure.Dispose();
+        }
+    }
+
+    private static (int Files, long Bytes) Measure(string path, CancellationToken token)
+    {
+        if (File.Exists(path)) return (1, new FileInfo(path).Length);
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint };
+        var files = 0;
+        long bytes = 0;
+        foreach (var file in new DirectoryInfo(path).EnumerateFiles("*", options))
+        {
+            if ((++files & 1023) == 0) token.ThrowIfCancellationRequested();
+            bytes += file.Length;
+        }
+        return (files, bytes);
+    }
+
+    private void RenderSource()
+    {
+        if (_sourcePath is null) return;
+        var folder = Directory.Exists(_sourcePath);
+        SourceGlyph.Text = folder ? "\uE8B7" : "\uE7C3";
+        SourceName.Text = DisplayName(_sourcePath);
+        SourceName.ToolTip = _sourcePath;
+        SourceMeta.Text = _sourceSize is not { } size ? " "
+            : !folder ? FormatSize(size.Bytes)
+            : size.Files == 0 ? L("空文件夹")
+            : FileCount(size.Files, size.Bytes);
+    }
+
+    private void RenderOutput()
+    {
+        RenderPath(OutputPathText, _outputPath);
+    }
+
+    private static void RenderPath(TextBlock target, string? path)
+    {
+        target.Inlines.Clear();
+        target.ToolTip = path;
+        if (path is null) return;
+        target.Inlines.Add(new Run(Path.GetFileName(path)));
+        var folder = Path.GetDirectoryName(path);
+        if (string.IsNullOrEmpty(folder)) return;
+        var location = new Run("   " + folder);
+        location.SetResourceReference(TextElement.ForegroundProperty, "Ink3");
+        target.Inlines.Add(location);
+    }
+
+    private void ChooseOutput_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = L("保存加密包"), Filter = L("加密包 (*.exe)|*.exe"), AddExtension = true, DefaultExt = ".exe", OverwritePrompt = false,
+            FileName = SafeFileName(_outputPath, L("加密文件") + ".protected.exe"),
+        };
+        if (_outputPath is not null && Path.GetDirectoryName(_outputPath) is { } folder && Directory.Exists(folder)) dialog.InitialDirectory = folder;
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            _outputPath = NextAvailablePackagePath(dialog.FileName);
+            Hide(EncryptNotice);
+            RenderOutput();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException) { ShowNotice(EncryptNotice, error); }
+    }
+
+    private void OptionsToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        var open = OptionsToggle.IsChecked == true;
+        OptionsPanel.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        if (open) Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => OptionsPanel.BringIntoView());
+    }
+
+    private PackageCompression SelectedCompression() =>
+        CompressionBrotli.IsChecked == true ? PackageCompression.Brotli : CompressionNone.IsChecked == true ? PackageCompression.None : PackageCompression.Zstd;
+
+    private PackageLayout SelectedLayout() =>
+        LayoutEmbedded.IsChecked == true ? PackageLayout.Embedded : LayoutDetached.IsChecked == true ? PackageLayout.Detached : PackageLayout.Auto;
+
+    private int SelectedRecoveryPercent() =>
+        Recovery0.IsChecked == true ? 0 : Recovery5.IsChecked == true ? 5 : Recovery20.IsChecked == true ? 20 : 10;
+
+    private void Encrypt_Click(object sender, RoutedEventArgs e) => _ = EncryptAsync();
+
+    private async Task EncryptAsync()
+    {
+        if (_busy || _sourcePath is null) return;
+        Hide(EncryptNotice);
+        if (!ValidatePasswords(reveal: true))
+        {
+            FocusFirstProblem();
+            return;
+        }
+        var passwords = new List<string>();
+        CreateOptions options;
+        int redundancy;
+        try
+        {
+            if (!File.Exists(_sourcePath) && !Directory.Exists(_sourcePath)) throw new IOException(L("找不到此文件或文件夹。"));
+            var output = _outputPath ?? throw new IOException(L("先选择保存位置。"));
+            if (PackageOutputCollision(output))
+            {
+                output = _outputPath = NextAvailablePackagePath(output);
+                RenderOutput();
+            }
+            foreach (var row in _rows)
+                if (!IsEmpty(row.Password)) passwords.Add(row.Password.Password);
+            options = new CreateOptions(_sourcePath, output, passwords, SelectedCompression(), _stubOverride ?? CommandLine.StandaloneStub(), SelectedLayout());
+            redundancy = SelectedRecoveryPercent();
+        }
+        catch (Exception error)
+        {
+            passwords.Clear();
+            ShowNotice(EncryptNotice, error);
+            return;
+        }
+
+        BeginWork(Work.Encrypt);
+        var token = _operation!.Token;
+        try
+        {
+            var package = await Task.Run(() => PackageService.CreateAsync(options, PackageProgressSink(), token), token);
+            ClearPasswords();
+            RecoveryResult? recovery = null;
+            string? warning = null;
+            if (redundancy > 0)
+            {
+                Interlocked.Exchange(ref _latestProgress, null);
+                WorkStage.Text = L("正在生成恢复记录");
+                SetPercent(null);
+                WorkDetail.Text = WorkPath.Text = " ";
+                try { recovery = await Task.Run(() => RecoveryService.CreateAsync(package.OutputPath, redundancy, RecoveryProgressSink(), token), token); }
+                catch (OperationCanceledException) { warning = L("已取消生成恢复记录"); }
+                catch (Exception error) { warning = L("恢复记录没有生成：{0}", DescribeException(error)); }
+            }
+            if (EndWork()) ShowDone(package, recovery, warning, encrypted: true);
+        }
+        catch (OperationCanceledException) { if (EndWork()) ReturnWithNotice(Screen.Encrypt, EncryptNotice, L("已取消"), neutral: true); }
+        catch (Exception error) { if (EndWork()) ReturnWithNotice(Screen.Encrypt, EncryptNotice, DescribeException(error)); }
+        finally { passwords.Clear(); }
+    }
+
+    private sealed class PasswordRow
+    {
+        public required Grid Root { get; init; }
+        public required PasswordBox Password { get; init; }
+        public required PasswordBox Confirmation { get; init; }
+        public required TextBlock Check { get; init; }
+        public required Button Remove { get; init; }
+        public required TextBlock Message { get; init; }
+        public bool PasswordVisited { get; set; }
+        public bool ConfirmationVisited { get; set; }
+    }
+
+    private void AddPassword_Click(object sender, RoutedEventArgs e)
+    {
+        AddPasswordRow();
+        _rows[^1].Password.Focus();
+    }
+
+    private void AddPasswordRow()
+    {
+        if (_rows.Count >= MaxPasswords) return;
+        var root = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        root.ColumnDefinitions.Add(new ColumnDefinition());
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+        root.ColumnDefinitions.Add(new ColumnDefinition());
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var password = new PasswordBox();
+        password.SetResourceReference(Field.PlaceholderProperty, "Ui.PasswordPlaceholder");
+        var confirmation = new PasswordBox { Padding = new Thickness(12, 0, 34, 0) };
+        confirmation.SetResourceReference(Field.PlaceholderProperty, "Ui.ConfirmPlaceholder");
+        Grid.SetColumn(confirmation, 2);
+        var check = new TextBlock
+        {
+            Text = "\uE73E", FontFamily = (FontFamily)FindResource("Icons"), FontSize = 12, IsHitTestVisible = false,
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 13, 0), Visibility = Visibility.Collapsed,
+        };
+        check.SetResourceReference(TextBlock.ForegroundProperty, "Success");
+        Grid.SetColumn(check, 2);
+        var remove = new Button
+        {
+            Content = "\uE711", Style = (Style)FindResource("IconButton"),
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(remove, 3);
+        var message = new TextBlock { Style = (Style)FindResource("Meta"), Margin = new Thickness(2, 6, 0, 0), TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
+        message.SetResourceReference(TextBlock.ForegroundProperty, "Danger");
+        Grid.SetRow(message, 1);
+        Grid.SetColumnSpan(message, 3);
+        foreach (UIElement child in new UIElement[] { password, confirmation, check, remove, message }) root.Children.Add(child);
+
+        var row = new PasswordRow { Root = root, Password = password, Confirmation = confirmation, Check = check, Remove = remove, Message = message };
+        password.PasswordChanged += (_, _) => { Hide(EncryptNotice); ValidatePasswords(); };
+        confirmation.PasswordChanged += (_, _) => ValidatePasswords();
+        password.LostKeyboardFocus += (_, _) =>
+        {
+            if (!IsEmpty(password)) row.PasswordVisited = true;
+            ValidatePasswords();
+        };
+        confirmation.LostKeyboardFocus += (_, _) =>
+        {
+            if (!IsEmpty(confirmation)) row.ConfirmationVisited = true;
+            ValidatePasswords();
+        };
+        password.KeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Enter) return;
+            e.Handled = true;
+            confirmation.Focus();
+        };
+        confirmation.KeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Enter) return;
+            e.Handled = true;
+            var next = _rows.IndexOf(row) + 1;
+            if (next < _rows.Count) _rows[next].Password.Focus();
+            else _ = EncryptAsync();
+        };
+        remove.Click += (_, _) => RemoveRow(row, focus: true);
+        _rows.Add(row);
+        PasswordRows.Children.Add(root);
+        RefreshRows();
+        ValidatePasswords();
+    }
+
+    private void RemoveRow(PasswordRow row, bool focus)
+    {
+        if (_rows.Count <= 1) return;
+        var index = _rows.IndexOf(row);
+        row.Password.Clear();
+        row.Confirmation.Clear();
+        _rows.Remove(row);
+        PasswordRows.Children.Remove(row.Root);
+        RefreshRows();
+        ValidatePasswords();
+        if (focus) _rows[Math.Min(index, _rows.Count - 1)].Password.Focus();
+    }
+
+    private void RefreshRows()
+    {
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            var row = _rows[i];
+            row.Remove.Visibility = _rows.Count > 1 ? Visibility.Visible : Visibility.Hidden;
+            row.Remove.ToolTip = L("移除");
+            AutomationProperties.SetName(row.Remove, L("移除密码 {0}", i + 1));
+            AutomationProperties.SetName(row.Password, L("密码 {0}", i + 1));
+            AutomationProperties.SetAutomationId(row.Password, "Password" + (i + 1));
+            AutomationProperties.SetName(row.Confirmation, L("确认密码 {0}", i + 1));
+            AutomationProperties.SetAutomationId(row.Confirmation, "ConfirmPassword" + (i + 1));
+        }
+        AddPasswordButton.Visibility = _rows.Count < MaxPasswords ? Visibility.Visible : Visibility.Collapsed;
+        PasswordsHint.Visibility = _rows.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Marks each row in place. Problems show once a field has been left, or for every row when <paramref name="reveal"/> is set.</summary>
+    private bool ValidatePasswords(bool reveal = false)
+    {
+        var secrets = _rows.Select(row => (Password: row.Password.SecurePassword, Confirmation: row.Confirmation.SecurePassword)).ToArray();
+        try
+        {
+            var filled = 0;
+            var valid = true;
+            for (var i = 0; i < _rows.Count; i++)
+            {
+                var row = _rows[i];
+                var (password, confirmation) = secrets[i];
+                string? message = null;
+                bool passwordBad = false, confirmationBad = false, ok = false;
+                if (password.Length > 0 || confirmation.Length > 0)
+                {
+                    filled++;
+                    var showPassword = reveal || row.PasswordVisited;
+                    var duplicateOf = password.Length < MinimumLength ? -1
+                        : Array.FindIndex(secrets, 0, i, other => other.Password.Length >= MinimumLength && SameSecret(other.Password, password));
+                    if (password.Length < MinimumLength)
+                    {
+                        if (showPassword) (message, passwordBad) = (L("至少 {0} 个字符", MinimumLength), true);
+                    }
+                    else if (duplicateOf >= 0)
+                    {
+                        if (showPassword) (message, passwordBad) = (L("和第 {0} 个密码相同", duplicateOf + 1), true);
+                    }
+                    else if (!SameSecret(password, confirmation))
+                    {
+                        if (reveal || row.ConfirmationVisited || confirmation.Length >= password.Length)
+                            (message, confirmationBad) = (confirmation.Length == 0 ? L("再输入一次") : L("两次输入不一致"), true);
+                    }
+                    else ok = true;
+                    valid &= ok;
+                }
+                Field.SetIsInvalid(row.Password, passwordBad);
+                Field.SetIsInvalid(row.Confirmation, confirmationBad);
+                row.Check.Visibility = ok ? Visibility.Visible : Visibility.Collapsed;
+                row.Message.Text = message ?? "";
+                row.Message.Visibility = message is null ? Visibility.Collapsed : Visibility.Visible;
+            }
+            if (filled == 0)
+            {
+                valid = false;
+                if (reveal)
+                {
+                    _rows[0].Message.Text = L("输入一个密码");
+                    _rows[0].Message.Visibility = Visibility.Visible;
+                    Field.SetIsInvalid(_rows[0].Password, true);
+                }
+            }
+            return valid;
+        }
+        finally
+        {
+            foreach (var (password, confirmation) in secrets)
+            {
+                password.Dispose();
+                confirmation.Dispose();
+            }
+        }
+    }
+
+    private void FocusFirstProblem()
+    {
+        foreach (var row in _rows)
+        {
+            if (Field.GetIsInvalid(row.Password)) { row.Password.Focus(); Shake(row.Root); return; }
+            if (Field.GetIsInvalid(row.Confirmation)) { row.Confirmation.Focus(); Shake(row.Root); return; }
+        }
+    }
+
+    private bool HasTypedPasswords() => _rows.Any(row => !IsEmpty(row.Password) || !IsEmpty(row.Confirmation));
+
+    private static bool IsEmpty(PasswordBox box)
+    {
+        using var secure = box.SecurePassword;
+        return secure.Length == 0;
+    }
+
+    /// <summary>Ordinal comparison without copying either secret into a managed string.</summary>
+    private static bool SameSecret(SecureString first, SecureString second)
+    {
+        if (first.Length != second.Length) return false;
+        IntPtr a = IntPtr.Zero, b = IntPtr.Zero;
+        try
+        {
+            a = Marshal.SecureStringToGlobalAllocUnicode(first);
+            b = Marshal.SecureStringToGlobalAllocUnicode(second);
+            var difference = 0;
+            for (var offset = 0; offset < first.Length * 2; offset++) difference |= Marshal.ReadByte(a, offset) ^ Marshal.ReadByte(b, offset);
+            return difference == 0;
+        }
+        finally
+        {
+            if (a != IntPtr.Zero) Marshal.ZeroFreeGlobalAllocUnicode(a);
+            if (b != IntPtr.Zero) Marshal.ZeroFreeGlobalAllocUnicode(b);
+        }
+    }
+
+    private void UpdateCapsLock()
+    {
+        var on = Keyboard.IsKeyToggled(Key.CapsLock) && Keyboard.FocusedElement is PasswordBox;
+        EncryptCapsLock.Visibility = on && _screen == Screen.Encrypt ? Visibility.Visible : Visibility.Collapsed;
+        UnlockCapsLock.Visibility = on && _screen == Screen.Unlock ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ClearPasswords()
+    {
+        foreach (var row in _rows)
+        {
+            row.Password.Clear();
+            row.Confirmation.Clear();
+        }
+        UnlockPassword.Clear();
+    }
+
+    private void PrepareUnlock(string path)
+    {
+        _packagePath = path;
+        _packageInfo = null;
+        _packageError = null;
+        _wrongPassword = false;
+        _inspecting = true;
+        _packageHasRecovery = HasRecovery(path);
+        _destinationPath = SuggestDestination(path);
+        UnlockPassword.Clear();
+        VerifyFirstCheck.IsChecked = false;
+        Hide(UnlockNotice);
+    }
+
+    private async Task InspectPackageAsync(string path)
+    {
+        UiText.Pin();
+        try
+        {
+            var info = await Task.Run(() => PackageService.InspectAsync(path));
+            if (_packagePath == path) _packageInfo = info;
+        }
+        catch (Exception error)
+        {
+            if (_packagePath == path) _packageError = DescribeException(error);
+        }
+        if (_packagePath != path) return;
+        _inspecting = false;
+        if (_screen != Screen.Unlock) return;
+        RenderUnlock();
+        FocusScreen();
+    }
+
+    private static bool HasRecovery(string path)
+    {
+        try { return RecoveryService.HasRecoveryFiles(path); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException) { return false; }
+    }
+
+    private static string? SuggestDestination(string package)
+    {
+        var parent = Path.GetDirectoryName(package) ?? Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        var stem = Path.GetFileNameWithoutExtension(package);
+        if (stem.EndsWith(".protected", StringComparison.OrdinalIgnoreCase)) stem = stem[..^10];
+        try { return NextAvailablePath(Path.Combine(parent, L("{0}_已还原", stem)), directory: true); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException) { return null; }
+    }
+
+    private void RenderUnlock()
+    {
+        if (_packagePath is null) return;
+        PackageName.Text = Path.GetFileName(_packagePath);
+        PackageName.ToolTip = _packagePath;
+        var tone = "Ink3";
+        string meta;
+        if (_inspecting) meta = L("正在读取…");
+        else if (_packageInfo is { } info)
+            meta = info.PasswordSlots == 1
+                ? L("{0} · 1 个密码", FormatSize(info.EncryptedBytes))
+                : L("{0} · {1} 个密码", FormatSize(info.EncryptedBytes), info.PasswordSlots);
+        else if (_packageHasRecovery) (meta, tone) = (L("文件有损坏，解密时会用恢复记录修复"), "Warning");
+        else (meta, tone) = (_packageError ?? "", "Danger");
+        PackageMeta.Text = meta;
+        PackageMeta.SetResourceReference(TextBlock.ForegroundProperty, tone);
+        ReloadButton.Visibility = !_inspecting && _packageInfo is null && !_packageHasRecovery ? Visibility.Visible : Visibility.Collapsed;
+        var ready = !_inspecting && (_packageInfo is not null || _packageHasRecovery);
+        UnlockPassword.IsEnabled = ready;
+        DecryptButton.IsEnabled = ready;
+        UnlockError.Visibility = _wrongPassword ? Visibility.Visible : Visibility.Collapsed;
+        Field.SetIsInvalid(UnlockPassword, _wrongPassword);
+        RenderPath(DestinationText, _destinationPath);
+        VerifyFirstCheck.Visibility = _packageHasRecovery ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private async void Reload_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || _packagePath is null) return;
+        var path = _packagePath;
+        PrepareUnlock(path);
+        RenderUnlock();
+        await InspectPackageAsync(path);
+    }
+
+    private void UnlockPassword_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        Hide(UnlockNotice);
+        if (!_wrongPassword) return;
+        _wrongPassword = false;
+        UnlockError.Visibility = Visibility.Collapsed;
+        Field.SetIsInvalid(UnlockPassword, false);
+    }
+
+    private void UnlockPassword_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        _ = DecryptAsync();
+    }
+
+    private void ChooseDestination_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog { Title = L("选择还原位置"), Multiselect = false };
+        if (_destinationPath is not null && Path.GetDirectoryName(_destinationPath) is { } parent && Directory.Exists(parent)) dialog.InitialDirectory = parent;
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            var name = SafeFileName(_destinationPath, L("2Password_已还原"));
+            _destinationPath = NextAvailablePath(Path.Combine(dialog.FolderName, name), directory: true);
+            Hide(UnlockNotice);
+            RenderUnlock();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException) { ShowNotice(UnlockNotice, error); }
+    }
+
+    private void Decrypt_Click(object sender, RoutedEventArgs e) => _ = DecryptAsync();
+
+    private async Task DecryptAsync()
+    {
+        if (_busy || _inspecting || _packagePath is null || !DecryptButton.IsEnabled) return;
+        Hide(UnlockNotice);
+        if (IsEmpty(UnlockPassword))
+        {
+            UnlockPassword.Focus();
+            Shake(UnlockPassword);
+            return;
+        }
+        string destination;
+        try
+        {
+            destination = _destinationPath ?? throw new IOException(L("先选择还原位置。"));
+            if (File.Exists(destination) || Directory.Exists(destination))
+            {
+                destination = _destinationPath = NextAvailablePath(destination, directory: true);
+                RenderUnlock();
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            ShowNotice(UnlockNotice, error);
+            return;
+        }
+        var options = new ExtractOptions(_packagePath, destination, UnlockPassword.Password);
+        var verifyFirst = _packageHasRecovery && VerifyFirstCheck.IsChecked == true;
+
+        BeginWork(Work.Decrypt);
+        var token = _operation!.Token;
+        try
+        {
+            var result = await Task.Run(() => RecoveryService.ExtractAsync(options, PackageProgressSink(), RecoveryProgressSink(), token, verifyFirst), token);
+            ClearPasswords();
+            if (EndWork()) ShowDone(result, null, null, encrypted: false);
+        }
+        catch (PasswordNotRecognizedException)
+        {
+            if (!EndWork()) return;
+            _wrongPassword = true;
+            Show(Screen.Unlock);
+            Shake(UnlockPassword);
+        }
+        catch (OperationCanceledException) { if (EndWork()) ReturnWithNotice(Screen.Unlock, UnlockNotice, L("已取消"), neutral: true); }
+        catch (Exception error) { if (EndWork()) ReturnWithNotice(Screen.Unlock, UnlockNotice, DescribeException(error)); }
+    }
+
+    private void ChooseRecovery()
+    {
+        if (_busy) return;
+        var dialog = new OpenFileDialog { Title = L("选择 PAR2 恢复记录"), Filter = L("PAR2 恢复记录 (*.par2)|*.par2"), CheckFileExists = true, Multiselect = false };
+        if (_packagePath is not null && Path.GetDirectoryName(_packagePath) is { } folder && Directory.Exists(folder)) dialog.InitialDirectory = folder;
+        if (dialog.ShowDialog(this) != true) return;
+        OpenRepair(dialog.FileName, _embeddedPackage is not null || _screen == Screen.Unlock ? Screen.Unlock : Screen.Home);
+    }
+
+    private void OpenRepair(string path, Screen returnTo)
+    {
+        _recoveryPath = path;
+        _recoveryResult = null;
+        _repairReturn = returnTo;
+        Hide(RepairNotice);
+        Show(Screen.Repair);
+    }
+
+    private void RenderRepair()
+    {
+        if (_recoveryPath is null) return;
+        RecoveryName.Text = Path.GetFileName(_recoveryPath);
+        RecoveryName.ToolTip = _recoveryPath;
+        if (_recoveryResult is not { } result)
+        {
+            RepairResult.Visibility = Visibility.Collapsed;
+            _repairNext = RepairNext.Verify;
+            RepairAction.Content = L("检查");
+            return;
+        }
+        var repairable = result.Repairable && !_recoveryFromRepair;
+        var (status, tone) = result.Success ? (_recoveryFromRepair && result.Repaired ? L("已修复") : L("没有损坏"), "Success")
+            : repairable ? (L("有损坏，可以修复"), "Warning")
+            : (L("无法修复"), "Danger");
+        RepairResult.Visibility = Visibility.Visible;
+        RepairStatus.Text = status;
+        RepairDot.SetResourceReference(Shape.FillProperty, tone);
+        var explain = result.Repaired || !(result.Success || repairable);
+        RepairSummary.Text = result.Summary;
+        RepairSummary.Visibility = explain ? Visibility.Visible : Visibility.Collapsed;
+        _repairNext = repairable ? RepairNext.Repair : result.Success && PackageFor(result) is not null ? RepairNext.Open : RepairNext.Verify;
+        RepairAction.Content = _repairNext switch
+        {
+            RepairNext.Repair => L("修复"),
+            RepairNext.Open => L("打开加密包"),
+            _ => L("重新检查"),
+        };
+    }
+
+    private static string? PackageFor(RecoveryResult result)
+    {
+        var index = result.RecoveryFile;
+        if (!index.EndsWith(".par2", StringComparison.OrdinalIgnoreCase)) return null;
+        var package = index[..^5];
+        return (package.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || package.EndsWith(".2pw", StringComparison.OrdinalIgnoreCase)) && File.Exists(package)
+            ? package : null;
+    }
+
+    private async void RepairAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        if (_repairNext == RepairNext.Open && _recoveryResult is not null && PackageFor(_recoveryResult) is { } package)
+        {
+            PrepareUnlock(package);
+            Show(Screen.Unlock);
+            await InspectPackageAsync(package);
+        }
+        else await RunRecoveryAsync(repair: _repairNext == RepairNext.Repair);
+    }
+
+    private async Task RunRecoveryAsync(bool repair)
+    {
+        if (_busy || _recoveryPath is null) return;
+        Hide(RepairNotice);
+        var path = _recoveryPath;
+        if (!File.Exists(path))
+        {
+            ShowNotice(RepairNotice, L("找不到此文件或文件夹。"));
+            return;
+        }
+        BeginWork(repair ? Work.Repair : Work.Verify);
+        var token = _operation!.Token;
+        try
+        {
+            var result = await Task.Run(() => repair
+                ? RecoveryService.RepairAsync(path, RecoveryProgressSink(), token)
+                : RecoveryService.VerifyAsync(path, RecoveryProgressSink(), token), token);
+            if (!EndWork()) return;
+            _recoveryResult = result;
+            _recoveryFromRepair = repair;
+            Show(Screen.Repair);
+        }
+        catch (OperationCanceledException) { if (EndWork()) ReturnWithNotice(Screen.Repair, RepairNotice, L("已取消"), neutral: true); }
+        catch (Exception error) { if (EndWork()) ReturnWithNotice(Screen.Repair, RepairNotice, DescribeException(error)); }
+    }
+
+    private void BeginWork(Work work)
+    {
+        UiText.Pin();
+        _busy = true;
+        _work = work;
+        _damageSeen = false;
+        _operation = new CancellationTokenSource();
+        ViewFor(_screen).IsHitTestVisible = false;
+        WorkStage.Text = work switch
+        {
+            Work.Encrypt => L("正在加密"),
+            Work.Decrypt => L("正在解密"),
+            Work.Verify => L("正在检查"),
+            _ => L("正在修复"),
+        };
+        SetPercent(null);
+        WorkDetail.Text = WorkPath.Text = " ";
+        CancelButton.IsEnabled = true;
+        Render();
+        _stopwatch.Restart();
+        _progressTimer.Start();
+        _revealTimer.Start();
+    }
+
+    /// <summary>Returns false when the window closes instead of returning to a screen.</summary>
+    private bool EndWork()
+    {
+        _revealTimer.Stop();
+        _progressTimer.Stop();
+        _stopwatch.Stop();
+        Interlocked.Exchange(ref _latestProgress, null);
+        Interlocked.Exchange(ref _latestRecoveryProgress, null);
+        _operation?.Dispose();
+        _operation = null;
+        _busy = false;
+        foreach (var view in Views) view.IsHitTestVisible = true;
+        if (!_closeWhenFinished) return true;
+        Close();
+        return false;
+    }
+
+    private void ReturnWithNotice(Screen screen, TextBlock notice, string message, bool neutral = false)
+    {
+        Show(screen);
+        ShowNotice(notice, message, neutral);
+    }
+
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        _operation?.Cancel();
+        CancelButton.IsEnabled = false;
+        _progressTimer.Stop();
+        WorkStage.Text = L("正在取消");
+        SetPercent(null);
+        WorkDetail.Text = WorkPath.Text = " ";
+    }
+
+    private IProgress<PackageProgress> PackageProgressSink() =>
+        new ForwardProgress<PackageProgress>(value => Interlocked.Exchange(ref _latestProgress, value));
+
+    private IProgress<RecoveryProgress> RecoveryProgressSink() =>
+        new ForwardProgress<RecoveryProgress>(value => Interlocked.Exchange(ref _latestRecoveryProgress, value));
+
+    private void ShowProgress(PackageProgress progress)
+    {
+        if (!_busy) return;
+        var (title, measured) = StageOf(progress.Stage);
+        if (title is not null) WorkStage.Text = title;
+        if (!measured || progress.TotalBytes <= 0 || progress.BytesProcessed <= 0)
+        {
+            SetPercent(null);
+            WorkDetail.Text = IsStage(progress.Stage, "检查文件") && progress.EntriesProcessed > 0
+                ? L("{0} 项", progress.EntriesProcessed.ToString("N0", CultureInfo.CurrentCulture)) : " ";
+        }
+        else
+        {
+            SetPercent(Math.Clamp(progress.BytesProcessed * 100d / progress.TotalBytes, 0, 99));
+            var detail = FormatSize(progress.BytesProcessed) + " / " + FormatSize(progress.TotalBytes);
+            var seconds = _stopwatch.Elapsed.TotalSeconds;
+            if (seconds > 1) detail += "  ·  " + FormatSize((long)(progress.BytesProcessed / seconds)) + "/s";
+            WorkDetail.Text = detail;
+        }
+        var current = progress.CurrentPath.TrimEnd('/', '\\');
+        WorkPath.Text = current.Length == 0 ? " " : Path.GetFileName(current);
+    }
+
+    private void ShowProgress(RecoveryProgress progress)
+    {
+        if (!_busy) return;
+        if (IsStage(progress.Stage, "检测到损坏")) _damageSeen = true;
+        var title = progress.Stage switch
+        {
+            _ when IsStage(progress.Stage, "生成 PAR2 恢复记录") => L("正在生成恢复记录"),
+            _ when IsStage(progress.Stage, "检查 PAR2 恢复记录") || IsStage(progress.Stage, "准备恢复工作区") =>
+                _damageSeen ? L("发现损坏，正在检查") : L("正在检查"),
+            _ when IsStage(progress.Stage, "修复加密数据") || IsStage(progress.Stage, "检测到损坏") =>
+                _work == Work.Decrypt ? L("发现损坏，正在修复") : L("正在修复"),
+            _ when IsStage(progress.Stage, "重新认证并解包") => L("正在解密"),
+            _ when IsStage(progress.Stage, "恢复记录已生成") || IsStage(progress.Stage, "修复完成") => null,
+            _ => string.IsNullOrWhiteSpace(progress.Stage) ? null : progress.Stage,
+        };
+        if (title is not null) WorkStage.Text = title;
+        SetPercent(progress.Percent is int percent ? Math.Clamp(percent, 0, 99) : null);
+        WorkDetail.Text = WorkPath.Text = " ";
+    }
+
+    private void SetPercent(double? percent)
+    {
+        WorkProgress.IsIndeterminate = percent is null;
+        WorkProgress.Value = percent ?? 0;
+        WorkPercent.Text = percent is { } value ? ((int)value).ToString(CultureInfo.CurrentCulture) + "%" : "";
+    }
+
+    private static bool IsStage(string stage, string key) => string.Equals(stage, SharedText.Get(key), StringComparison.Ordinal);
+
+    /// <summary>Maps Core progress stages to a short headline; <c>Measured</c> stages carry meaningful byte counts.</summary>
+    private static (string? Title, bool Measured) StageOf(string stage)
+    {
+        if (IsStage(stage, "检查文件") || IsStage(stage, "核对源文件")) return (L("正在检查文件"), false);
+        if (IsStage(stage, "保护独立密码")) return (L("正在设置密码"), false);
+        if (IsStage(stage, "验证密码")) return (L("正在验证密码"), false);
+        if (IsStage(stage, "加密打包")) return (L("正在加密"), true);
+        if (IsStage(stage, "组装独立 EXE") || IsStage(stage, "生成配套解密程序")) return (L("正在生成 EXE"), true);
+        if (IsStage(stage, "验证并解包")) return (L("正在解密"), true);
+        if (IsStage(stage, "恢复文件属性")) return (L("即将完成"), false);
+        if (IsStage(stage, "完成")) return (null, true);
+        return (string.IsNullOrWhiteSpace(stage) ? null : stage, true);
+    }
+
+    private void ShowDone(PackageResult result, RecoveryResult? recovery, string? warning, bool encrypted)
+    {
+        _doneResult = result;
+        _doneRecovery = recovery;
+        _doneWarning = warning;
+        _doneEncrypted = encrypted;
+        Show(Screen.Done);
+    }
+
+    private void RenderDone()
+    {
+        if (_doneResult is not { } result) return;
+        DoneFiles.Children.Clear();
+        if (_doneEncrypted)
+        {
+            DoneTitle.Text = L("加密完成");
+            AddDoneRow(Path.GetFileName(result.OutputPath), FormatSize(SizeOf(result.OutputPath)), result.OutputPath);
+            if (result.DataPath is { } data) AddDoneRow(Path.GetFileName(data), FormatSize(SizeOf(data)), data);
+            if (_doneRecovery is { } recovery)
+            {
+                var files = recovery.Files.Where(File.Exists).ToArray();
+                if (files.Length > 0)
+                    AddDoneRow(files.Length == 1 ? L("恢复记录 · 1 个文件") : L("恢复记录 · {0} 个文件", files.Length),
+                        FormatSize(files.Sum(SizeOf)), string.Join("\n", files.Select(Path.GetFileName)));
+            }
+            DoneHint.Text = DoneFiles.Children.Count > 1 ? L("这些文件放在同一个文件夹里") : "";
+            DonePrimary.Content = L("在文件夹中显示");
+            DoneSecondary.Content = L("完成");
+        }
+        else
+        {
+            DoneTitle.Text = L("解密完成");
+            AddDoneRow(DisplayName(result.OutputPath), result.FileCount == 0 ? L("空文件夹") : FileCount(result.FileCount, result.TotalBytes), result.OutputPath);
+            DoneHint.Text = Path.GetDirectoryName(result.OutputPath) ?? "";
+            DonePrimary.Content = L("打开文件夹");
+            DoneSecondary.Content = _embeddedPackage is null ? L("完成") : L("关闭");
+        }
+        DoneHint.Visibility = DoneHint.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        DoneWarning.Text = _doneWarning ?? "";
+        DoneWarning.Visibility = _doneWarning is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void AddDoneRow(string name, string detail, string tooltip)
+    {
+        var row = new Grid { Margin = new Thickness(16, 11, 16, 11), ToolTip = tooltip };
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.Children.Add(new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center });
+        var size = new TextBlock { Text = detail, Style = (Style)FindResource("Meta"), Margin = new Thickness(16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(size, 1);
+        row.Children.Add(size);
+        var frame = new Border { Child = row, BorderThickness = new Thickness(0, DoneFiles.Children.Count == 0 ? 0 : 1, 0, 0) };
+        frame.SetResourceReference(Border.BorderBrushProperty, "Line");
+        DoneFiles.Children.Add(frame);
+    }
+
+    private void DonePrimary_Click(object sender, RoutedEventArgs e)
+    {
+        if (_doneResult is not { } result) return;
+        try
+        {
+            if (_doneEncrypted) Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true, Arguments = "/select,\"" + result.OutputPath + "\"" });
+            else Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true, ArgumentList = { result.OutputPath } });
+        }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException)
+        {
+            DoneWarning.Text = DescribeException(error);
+            DoneWarning.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void DoneSecondary_Click(object sender, RoutedEventArgs e)
+    {
+        if (_embeddedPackage is not null && !_doneEncrypted) Close();
+        else GoHome();
+    }
+
+    private void ShowNotices()
+    {
+        string notices;
+        try
+        {
+            using var stream = typeof(App).Assembly.GetManifestResourceStream("TwoPassword.ThirdPartyNotices.txt")
+                ?? throw new IOException(L("未能读取此版本内的第三方许可文件。"));
+            using var reader = new StreamReader(stream);
+            notices = reader.ReadToEnd();
+        }
+        catch (IOException error)
+        {
+            MessageBox.Show(this, error.Message, "2Password", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var area = SystemParameters.WorkArea;
+        var dialog = new Window
+        {
+            Title = L("开源许可"), Owner = this, ShowInTaskbar = false, Language = Language,
+            Width = Math.Min(760, area.Width - 40), Height = Math.Min(620, area.Height - 40), MinWidth = 480, MinHeight = 360,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, FontFamily = FontFamily, FontSize = 13,
+            UseLayoutRounding = true,
+        };
+        dialog.SetResourceReference(BackgroundProperty, "Bg");
+        dialog.SetResourceReference(ForegroundProperty, "Ink");
+        dialog.SourceInitialized += (_, _) => Theme.ApplyFrame(dialog);
+        var layout = new DockPanel { Margin = new Thickness(20) };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
+        var export = new Button { Content = L("导出 PAR2 源码") };
+        AutomationProperties.SetAutomationId(export, "ExportRecoverySource");
+        export.Click += async (_, _) =>
+        {
+            var save = new SaveFileDialog
+            {
+                Title = L("导出 PAR2 源码"), Filter = L("源代码压缩包 (*.tar.xz)|*.tar.xz"), FileName = "par2cmdline-turbo-source.tar.xz",
+                AddExtension = true, DefaultExt = ".tar.xz", OverwritePrompt = false,
+            };
+            if (save.ShowDialog(dialog) != true) return;
+            export.IsEnabled = false;
+            try
+            {
+                var saved = await RecoveryService.ExportSourceAsync(save.FileName);
+                MessageBox.Show(dialog, L("已导出：{0}", saved), "2Password", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception error) { MessageBox.Show(dialog, DescribeException(error), "2Password", MessageBoxButton.OK, MessageBoxImage.Warning); }
+            finally { export.IsEnabled = true; }
+        };
+        var close = new Button { Content = L("关闭"), MinWidth = 88, Margin = new Thickness(8, 0, 0, 0), IsCancel = true, Style = (Style)FindResource("PrimaryButton") };
+        close.Click += (_, _) => dialog.Close();
+        buttons.Children.Add(export);
+        buttons.Children.Add(close);
+        DockPanel.SetDock(buttons, Dock.Bottom);
+        layout.Children.Add(buttons);
+        var text = new TextBox
+        {
+            Text = notices, Style = (Style)FindResource("Readout"), FontFamily = new FontFamily("Cascadia Mono, Consolas, Microsoft YaHei UI"),
+            Padding = new Thickness(14, 12, 4, 12), BorderThickness = new Thickness(1),
+        };
+        text.SetResourceReference(BackgroundProperty, "Surface");
+        text.SetResourceReference(BorderBrushProperty, "Line");
+        layout.Children.Add(text);
+        dialog.Content = layout;
+        dialog.ShowDialog();
+    }
+
+    private static void ShowNotice(TextBlock target, Exception error) => ShowNotice(target, DescribeException(error));
+
+    private static void ShowNotice(TextBlock target, string message, bool neutral = false)
+    {
+        target.Text = message;
+        target.SetResourceReference(TextBlock.ForegroundProperty, neutral ? "Ink2" : "Danger");
+        target.Visibility = Visibility.Visible;
+    }
+
+    private static void Hide(TextBlock target)
+    {
+        target.Visibility = Visibility.Collapsed;
+        target.Text = "";
+    }
+
+    private static void Enter(FrameworkElement view)
+    {
+        if (!Motion) return;
+        var shift = new TranslateTransform(0, 10);
+        view.RenderTransform = shift;
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        view.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)) { EasingFunction = ease });
+        shift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(240)) { EasingFunction = ease });
+    }
+
+    private static void Pop(FrameworkElement element)
+    {
+        if (!Motion) return;
+        var scale = new ScaleTransform();
+        element.RenderTransform = scale;
+        var grow = new DoubleAnimation(0.6, 1, TimeSpan.FromMilliseconds(360)) { EasingFunction = new BackEase { Amplitude = 0.45, EasingMode = EasingMode.EaseOut } };
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
+    }
+
+    private static void Shake(FrameworkElement element)
+    {
+        if (!Motion) return;
+        var shift = new TranslateTransform();
+        element.RenderTransform = shift;
+        var animation = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(380) };
+        foreach (var (time, x) in new[] { (0, 0d), (60, -9d), (120, 8d), (180, -6d), (240, 4d), (300, -2d), (380, 0d) })
+            animation.KeyFrames.Add(new EasingDoubleKeyFrame(x, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(time))));
+        shift.BeginAnimation(TranslateTransform.XProperty, animation);
+    }
+
+    private static string DisplayName(string path)
+    {
+        var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
+        return string.IsNullOrEmpty(name) ? path : name;
+    }
+
+    private static string FileCount(int files, long bytes) => files == 1
+        ? L("1 个文件 · {0}", FormatSize(bytes))
+        : L("{0} 个文件 · {1}", files.ToString("N0", CultureInfo.CurrentCulture), FormatSize(bytes));
+
+    private static long SizeOf(string path)
+    {
+        try { return new FileInfo(path).Length; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return 0; }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        var value = (double)Math.Max(0, bytes);
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
+        var format = unit == 0 || value >= 100 ? "0" : "0.0";
+        return value.ToString(format, CultureInfo.CurrentCulture) + " " + units[unit];
+    }
+
+    private static string SafeFileName(string? path, string fallback)
     {
         try
         {
-            path = Path.GetFullPath(path);
-            if (!File.Exists(path) && !Directory.Exists(path)) throw new IOException(L("找不到此文件或文件夹。"));
-            _sourcePath = path;
-            var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
-            SourceName.Text = string.IsNullOrEmpty(name) ? path : name;
-            SourceName.ToolTip = path;
-            SourcePathLabel.Text = path;
-            SourcePathLabel.ToolTip = path;
-            var parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(path));
-            if (string.IsNullOrEmpty(parent)) parent = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-            var outputName = string.IsNullOrEmpty(name) ? L("加密文件") : name;
-            OutputPathBox.Text = NextAvailablePackagePath(Path.Combine(parent, outputName + ".protected.exe"));
-            SetStatus(L("内容已选择"), Directory.Exists(path) ? L("将保留文件夹结构、文件内容与多语言名称。") : L("已准备保护所选文件。"));
+            var name = Path.GetFileName(path);
+            return string.IsNullOrEmpty(name) ? fallback : name;
         }
-        catch (Exception error) { ShowError(error, L("无法选择内容")); }
+        catch (ArgumentException) { return fallback; }
     }
 
     private static string NextAvailablePath(string path, bool directory)
@@ -233,21 +1495,7 @@ public partial class MainWindow : Window
             var candidate = Path.Combine(parent, stem + " (" + i + ")" + extension);
             if (!File.Exists(candidate) && !Directory.Exists(candidate)) return candidate;
         }
-        throw new IOException(L("无法选择空闲的输出名称，请手动指定新的路径。"));
-    }
-
-    private void ChooseOutput_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new SaveFileDialog { Title = L("保存独立加密包"), Filter = L("独立加密包 (*.exe)|*.exe"), AddExtension = true, DefaultExt = ".exe", OverwritePrompt = false, FileName = SafeFileName(OutputPathBox.Text, L("加密文件.protected.exe")) };
-        if (dialog.ShowDialog(this) != true) return;
-        try
-        {
-            var available = NextAvailablePackagePath(dialog.FileName);
-            OutputPathBox.Text = available;
-            if (!string.Equals(available, dialog.FileName, StringComparison.OrdinalIgnoreCase))
-                SetStatus(L("已选择新的文件名"), L("原名称或配套文件已存在。已在路径框中选择新名称，现有文件不会被覆盖。"));
-        }
-        catch (Exception error) { ShowError(error, L("无法选择输出位置")); }
+        throw new IOException(L("没有可用的名称，请手动选择位置。"));
     }
 
     private static string NextAvailablePackagePath(string path)
@@ -261,9 +1509,10 @@ public partial class MainWindow : Window
             var candidate = Path.Combine(parent, stem + " (" + index + ")" + extension);
             if (!PackageOutputCollision(candidate)) return candidate;
         }
-        throw new IOException(L("无法选择空闲的输出名称，请手动指定新的路径。"));
+        throw new IOException(L("没有可用的名称，请手动选择位置。"));
     }
 
+    /// <summary>True when the EXE, its .2pw sidecar, or any PAR2 file for either already exists.</summary>
     private static bool PackageOutputCollision(string path)
     {
         path = Path.GetFullPath(path);
@@ -283,630 +1532,8 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private static string SafeFileName(string path, string fallback)
+    private sealed class ForwardProgress<T>(Action<T> report) : IProgress<T>
     {
-        try { var name = Path.GetFileName(path); return string.IsNullOrEmpty(name) ? fallback : name; }
-        catch { return fallback; }
-    }
-
-    private void Source_DragOver(object sender, DragEventArgs e)
-    {
-        e.Effects = !_busy && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
-        e.Handled = true;
-    }
-
-    private void Source_Drop(object sender, DragEventArgs e)
-    {
-        e.Handled = true;
-        if (_busy) return;
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths && paths.Length == 1) SelectSource(paths[0]);
-        else SetStatus(L("一次选择一个项目"), L("可将多个文件先放进同一个文件夹，再拖入整个文件夹。"), error: true);
-    }
-
-    private void Package_DragOver(object sender, DragEventArgs e)
-    {
-        e.Effects = !_busy && _embeddedPackage is null && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
-        e.Handled = true;
-    }
-
-    private async void Package_Drop(object sender, DragEventArgs e)
-    {
-        e.Handled = true;
-        if (_busy || _embeddedPackage is not null) return;
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths && paths.Length == 1)
-            await SelectPackageAsync(paths[0]);
-    }
-
-    private void AddPassword_Click(object sender, RoutedEventArgs e)
-    {
-        AddPasswordRow();
-        if (_passwordEntries.Count > 0) _passwordEntries[^1].Password.Focus();
-    }
-
-    private void AddPasswordRow()
-    {
-        if (_passwordEntries.Count >= 16) return;
-        var entry = new PasswordEntry();
-        var container = new Border { Background = Brush("#141D2A"), CornerRadius = new CornerRadius(8), Padding = new Thickness(13), Margin = new Thickness(0, 0, 0, 9) };
-        var layout = new Grid();
-        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
-        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(39) });
-        var passwordStack = new StackPanel();
-        entry.Label = new TextBlock { FontSize = 10, Foreground = Brush("#9AAEC6"), Margin = new Thickness(0, 0, 0, 7) };
-        passwordStack.Children.Add(entry.Label);
-        entry.Password = new PasswordBox { MaxLength = 1024 };
-        passwordStack.Children.Add(entry.Password);
-        layout.Children.Add(passwordStack);
-        var confirmationStack = new StackPanel();
-        entry.ConfirmationLabel = new TextBlock { Text = L("再次输入"), FontSize = 10, Foreground = Brush("#9AAEC6"), Margin = new Thickness(0, 0, 0, 7) };
-        confirmationStack.Children.Add(entry.ConfirmationLabel);
-        entry.Confirmation = new PasswordBox { MaxLength = 1024 };
-        confirmationStack.Children.Add(entry.Confirmation);
-        Grid.SetColumn(confirmationStack, 2);
-        layout.Children.Add(confirmationStack);
-        entry.Remove = new Button { Content = "×", FontSize = 18, Padding = new Thickness(5), MinHeight = 29, Height = 32, Margin = new Thickness(7, 18, 0, 0), ToolTip = L("移除此密码"), Style = (Style)FindResource("QuietButton") };
-        AutomationProperties.SetName(entry.Remove, L("移除此密码"));
-        entry.Remove.Click += (_, _) =>
-        {
-            if (_passwordEntries.Count <= 1) return;
-            entry.Password.Clear();
-            entry.Confirmation.Clear();
-            _passwordEntries.Remove(entry);
-            PasswordRows.Children.Remove(container);
-            RefreshPasswordRows();
-        };
-        Grid.SetColumn(entry.Remove, 3);
-        layout.Children.Add(entry.Remove);
-        container.Child = layout;
-        _passwordEntries.Add(entry);
-        PasswordRows.Children.Add(container);
-        RefreshPasswordRows();
-    }
-
-    private void RefreshPasswordRows()
-    {
-        for (var i = 0; i < _passwordEntries.Count; i++)
-        {
-            _passwordEntries[i].Label.Text = L("独立密码 {0}", i + 1);
-            _passwordEntries[i].ConfirmationLabel.Text = L("再次输入");
-            _passwordEntries[i].Remove.ToolTip = L("移除此密码");
-            AutomationProperties.SetName(_passwordEntries[i].Remove, L("移除此密码"));
-            AutomationProperties.SetName(_passwordEntries[i].Password, L("独立密码 {0}", i + 1));
-            AutomationProperties.SetAutomationId(_passwordEntries[i].Password, "Password" + (i + 1));
-            AutomationProperties.SetName(_passwordEntries[i].Confirmation, L("确认密码 {0}", i + 1));
-            AutomationProperties.SetAutomationId(_passwordEntries[i].Confirmation, "ConfirmPassword" + (i + 1));
-            _passwordEntries[i].Remove.IsEnabled = _passwordEntries.Count > 1;
-        }
-        AddPasswordButton.IsEnabled = _passwordEntries.Count < 16;
-        AddPasswordButton.Content = L("＋  添加密码  {0}/16", _passwordEntries.Count);
-    }
-
-    private async void ChoosePackage_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog { Title = L("选择 2Password 加密包"), Filter = L("2Password 加密包|*.exe;*.2pw|所有文件|*.*"), CheckFileExists = true, Multiselect = false };
-        if (dialog.ShowDialog(this) == true) await SelectPackageAsync(dialog.FileName);
-    }
-
-    private async Task SelectPackageAsync(string path)
-    {
-        if (_inspecting || _busy) return;
-        _inspecting = true;
-        ActionButton.IsEnabled = false;
-        Navigation.IsEnabled = false;
-        ChoosePackageButton.IsEnabled = false;
-        LanguageSelector.IsEnabled = false;
-        _packageInfo = null;
-        try
-        {
-            var fullPath = Path.GetFullPath(path);
-            _selectedPackagePath = fullPath;
-            ReloadPackageButton.Visibility = Visibility.Visible;
-            _packagePath = fullPath;
-            PackageNameLabel.Text = Path.GetFileName(fullPath);
-            PackageNameLabel.ToolTip = fullPath;
-            var parent = Path.GetDirectoryName(fullPath) ?? Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-            var stem = Path.GetFileNameWithoutExtension(fullPath);
-            if (stem.EndsWith(".protected", StringComparison.OrdinalIgnoreCase)) stem = stem[..^10];
-            ExtractDestinationBox.Text = NextAvailablePath(Path.Combine(parent, L("{0}_已还原", stem)), directory: true);
-            ExtractPasswordBox.Clear();
-            var info = await Task.Run(() => PackageService.InspectAsync(fullPath));
-            _packageInfo = info;
-            RefreshPackageDetails();
-            SetStatus(L("加密包已就绪"), L("输入任意一个有效密码，即可还原全部内容。"));
-            ExtractPasswordBox.Focus();
-        }
-        catch (Exception error)
-        {
-            if (_selectedPackagePath is null || !File.Exists(_selectedPackagePath)) _packagePath = null;
-            PackageDetailsLabel.Text = L("无法读取包信息。若有匹配的 PAR2，开始解包时会尝试恢复损坏的数据。双文件包需要配套 .2pw；补齐后可点击“重新读取”。");
-            ShowError(error, L("无法读取加密包"));
-        }
-        finally
-        {
-            _inspecting = false;
-            ActionButton.IsEnabled = true;
-            Navigation.IsEnabled = true;
-            ChoosePackageButton.IsEnabled = true;
-            LanguageSelector.IsEnabled = true;
-        }
-    }
-
-    private void RefreshPackageDetails()
-    {
-        if (_packageInfo is { } info)
-        {
-            var compressionName = info.Compression switch { PackageCompression.Zstd => "Zstd", PackageCompression.Brotli => "Brotli", _ => L("未压缩") };
-            PackageDetailsLabel.Text = L("{0}  ·  {1} 个独立密码  ·  {2}", FormatSize(info.EncryptedBytes), info.PasswordSlots, compressionName);
-            if (info.IsDetached && info.DataPath is not null)
-                PackageDetailsLabel.Text += "\n" + L("外置加密数据：{0}", Path.GetFileName(info.DataPath));
-        }
-        else if (_selectedPackagePath is not null)
-            PackageDetailsLabel.Text = L("无法读取包信息。若有匹配的 PAR2，开始解包时会尝试恢复损坏的数据。双文件包需要配套 .2pw；补齐后可点击“重新读取”。");
-    }
-
-    private async void ReloadPackage_Click(object sender, RoutedEventArgs e)
-    {
-        var path = _embeddedPackage ?? _selectedPackagePath;
-        if (path is not null) await SelectPackageAsync(path);
-    }
-
-    private void ChooseDestination_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFolderDialog { Title = L("选择还原文件夹的上级位置"), Multiselect = false };
-        if (dialog.ShowDialog(this) != true) return;
-        var name = SafeFileName(ExtractDestinationBox.Text, L("2Password_已还原"));
-        ExtractDestinationBox.Text = NextAvailablePath(Path.Combine(dialog.FolderName, name), directory: true);
-    }
-
-    private async void Action_Click(object sender, RoutedEventArgs e)
-    {
-        if (_busy || _inspecting) return;
-        if (RecoveryPanel.Visibility == Visibility.Visible) await RunRecoveryAsync(repair: false);
-        else if (ExtractPanel.Visibility == Visibility.Visible) await ExtractAsync();
-        else await CreateAsync();
-    }
-
-    private async Task CreateAsync()
-    {
-        var passwords = new List<string>();
-        try
-        {
-            if (string.IsNullOrEmpty(_sourcePath)) throw new ArgumentException(L("请先选择一个文件或文件夹。"));
-            var output = OutputPathBox.Text;
-            if (string.IsNullOrWhiteSpace(output)) throw new ArgumentException(L("请选择加密 EXE 的保存位置。"));
-            if (!output.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException(L("独立加密包的文件名应以 .exe 结尾。"));
-            if (PackageOutputCollision(output)) throw new ArgumentException(L("输出名称或配套的 .2pw / PAR2 文件已存在。请点击“浏览”选择新的名称；现有文件不会被覆盖。"));
-            foreach (var entry in _passwordEntries)
-            {
-                var password = entry.Password.Password;
-                if (password.Length < 8) throw new ArgumentException(L("{0} 至少需要 8 个字符；建议使用 12 个以上字符的长密码。", entry.Label.Text));
-                if (!string.Equals(password, entry.Confirmation.Password, StringComparison.Ordinal))
-                    throw new ArgumentException(L("{0} 两次输入不一致，请重新检查。", entry.Label.Text));
-                if (passwords.Contains(password, StringComparer.Ordinal)) throw new ArgumentException(L("各个密码必须不同，请移除重复密码。"));
-                passwords.Add(password);
-            }
-            var stub = _stubOverride ?? CommandLine.StandaloneStub();
-            var layout = SelectedTag(LayoutSelector) switch { "embedded" => PackageLayout.Embedded, "detached" => PackageLayout.Detached, _ => PackageLayout.Auto };
-            var compression = SelectedTag(CompressionSelector) switch { "brotli" => PackageCompression.Brotli, "none" => PackageCompression.None, _ => PackageCompression.Zstd };
-            var redundancy = int.Parse(SelectedTag(RecoveryPercentSelector));
-            var options = new CreateOptions(_sourcePath, output, passwords, compression, stub, layout);
-            CreatedFilesCard.Visibility = Visibility.Collapsed;
-            await RunOperationAsync(L("正在准备加密"), async (progress, token) =>
-                await PackageService.CreateAsync(options, progress, token), L("加密包已创建"), creating: true, redundancyPercent: redundancy);
-        }
-        catch (Exception error) { ShowError(error, L("请检查创建设置")); }
-        finally { passwords.Clear(); }
-    }
-
-    private static string SelectedTag(ComboBox selector) => (selector.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "0";
-
-    private async Task ExtractAsync()
-    {
-        try
-        {
-            if (string.IsNullOrEmpty(_packagePath)) throw new ArgumentException(L("请先选择一个有效的 2Password 加密包。"));
-            if (ExtractPasswordBox.Password.Length == 0) throw new ArgumentException(L("请输入解密密码。"));
-            if (string.IsNullOrWhiteSpace(ExtractDestinationBox.Text)) throw new ArgumentException(L("请选择新的还原文件夹。"));
-            var destination = Path.GetFullPath(ExtractDestinationBox.Text);
-            if (File.Exists(destination) || Directory.Exists(destination))
-                throw new ArgumentException(L("还原位置已经存在。请使用一个尚不存在的新文件夹，避免覆盖现有内容。"));
-            var options = new ExtractOptions(_packagePath, destination, ExtractPasswordBox.Password);
-            var verifyFirst = VerifyFirstCheckBox.IsChecked == true;
-            await RunOperationAsync(L("正在检查加密文件"), async (progress, token) =>
-                await RecoveryService.ExtractAsync(options, progress, RecoveryProgressSink(), token, verifyFirst), L("文件已完整还原"));
-        }
-        catch (Exception error) { ShowError(error, L("请检查解密设置")); }
-    }
-
-    private async Task RunOperationAsync(string initial, Func<IProgress<PackageProgress>, CancellationToken, Task<PackageResult>> operation, string successTitle, bool creating = false, int redundancyPercent = 0)
-    {
-        BeginOperation(initial);
-        var token = _operationCancellation!.Token;
-        PackageResult? completedPackage = null;
-        try
-        {
-            var progress = new ForwardProgress(value => Interlocked.Exchange(ref _latestProgress, value));
-            var result = await Task.Run(() => operation(progress, token), token);
-            completedPackage = result;
-            _lastResultPath = result.OutputPath;
-            OpenResultButton.Visibility = Visibility.Visible;
-            ClearPasswords();
-            RecoveryResult? recovery = null;
-            if (creating)
-            {
-                ShowCreatedFiles(result, null);
-                if (redundancyPercent > 0)
-                {
-                    Interlocked.Exchange(ref _latestProgress, null);
-                    OperationProgress.Value = 0;
-                    SetStatus(L("加密包已完成，正在创建恢复记录"), L("{0}% PAR2 恢复记录；加密包会保留。", redundancyPercent));
-                    recovery = await Task.Run(() => RecoveryService.CreateAsync(result.OutputPath, redundancyPercent, RecoveryProgressSink(), token), token);
-                    ShowCreatedFiles(result, recovery);
-                }
-            }
-            OperationProgress.Value = 100;
-            var description = L("{0} 个文件 · {1} · {2:0.0} 秒", result.FileCount, FormatSize(result.TotalBytes), _stopwatch.Elapsed.TotalSeconds);
-            if (creating && result.DataPath is not null) description += L(" · 请一起复制 EXE 和 .2pw");
-            if (recovery is not null) description += L(" · PAR2 恢复记录已创建");
-            SetStatus(successTitle, description);
-        }
-        catch (OperationCanceledException)
-        {
-            if (creating && completedPackage is not null)
-            {
-                ShowCreatedFiles(completedPackage, null, recoveryIncomplete: true);
-                SetStatus(L("加密包已保留，恢复记录已取消"), L("加密文件已完整创建；尚未完成 PAR2 恢复记录。"), error: true);
-            }
-            else SetStatus(L("已取消"), L("操作已停止，未发布不完整的输出。"));
-            OperationProgress.Value = 0;
-        }
-        catch (Exception error)
-        {
-            if (creating && completedPackage is not null)
-            {
-                ShowCreatedFiles(completedPackage, null, recoveryIncomplete: true);
-                SetStatus(L("加密包已保留，恢复记录未完成"), L("加密文件已成功创建并保留。") + error.Message, error: true);
-                MessageBox.Show(this, L("加密包已成功创建并保留在：\n{0}\n\nPAR2 恢复记录未完成：\n{1}", completedPackage.OutputPath, error.Message), L("2Password · 恢复记录未完成"), MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-            else ShowError(error, L("操作未完成"));
-        }
-        finally { EndOperation(); }
-    }
-
-    private void BeginOperation(string initial)
-    {
-        _busy = true;
-        _operationCancellation = new CancellationTokenSource();
-        _lastResultPath = null;
-        OpenResultButton.Visibility = Visibility.Collapsed;
-        Navigation.IsEnabled = false;
-        CreatePanel.IsEnabled = false;
-        ExtractPanel.IsEnabled = false;
-        RecoveryPanel.IsEnabled = false;
-        LanguageSelector.IsEnabled = false;
-        ActionButton.IsEnabled = false;
-        RepairButton.IsEnabled = false;
-        CancelButton.IsEnabled = true;
-        CancelButton.Visibility = Visibility.Visible;
-        OperationProgress.Visibility = Visibility.Visible;
-        OperationProgress.Value = 0;
-        SetStatus(initial, L("正在安全处理，请稍候…"));
-        _stopwatch.Restart();
-        _progressTimer.Start();
-    }
-
-    private void EndOperation()
-    {
-            _progressTimer.Stop();
-            Interlocked.Exchange(ref _latestProgress, null);
-            Interlocked.Exchange(ref _latestRecoveryProgress, null);
-            _stopwatch.Stop();
-            _operationCancellation?.Dispose();
-            _operationCancellation = null;
-            _busy = false;
-            Navigation.IsEnabled = true;
-            CreatePanel.IsEnabled = true;
-            ExtractPanel.IsEnabled = true;
-            RecoveryPanel.IsEnabled = true;
-            LanguageSelector.IsEnabled = true;
-            ActionButton.IsEnabled = true;
-            RepairButton.IsEnabled = true;
-            CancelButton.Visibility = Visibility.Collapsed;
-            if (_closeWhenFinished) Close();
-    }
-
-    private void ShowCreatedFiles(PackageResult package, RecoveryResult? recovery, bool recoveryIncomplete = false, bool scrollToTop = true)
-    {
-        _createdPackage = package;
-        _createdRecovery = recovery;
-        _createdRecoveryIncomplete = recoveryIncomplete;
-        var files = new List<string> { package.OutputPath };
-        if (package.DataPath is not null) files.Add(package.DataPath);
-        if (recovery is not null)
-            files.AddRange(recovery.Files.Where(path => !files.Contains(path, StringComparer.OrdinalIgnoreCase)));
-        CreatedFilesList.ItemsSource = files;
-        CreatedFilesTitle.Text = recoveryIncomplete ? L("加密包已创建；恢复记录未完成") : recovery is not null ? L("加密包与恢复记录已创建") : L("加密包已创建");
-        CreatedFilesNote.Text = package.DataPath is not null
-            ? L("请一起复制 EXE 与 .2pw，并保持同一目录和原文件名。")
-            : L("复制加密 EXE，即可在其他 Windows 电脑离线解密。");
-        if (recovery is not null) CreatedFilesNote.Text += L(" 同时保留以下全部 .par2 文件，才能使用恢复记录校验或修复。");
-        if (recoveryIncomplete) CreatedFilesNote.Text += L(" 加密内容已保留，当前没有一套已完成的恢复记录。");
-        CreatedFilesCard.Visibility = Visibility.Visible;
-        if (scrollToTop) ContentScroll.ScrollToTop();
-    }
-
-    private void ChooseRecovery_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog { Title = L("选择 PAR2 恢复记录"), Filter = L("PAR2 恢复记录 (*.par2)|*.par2"), CheckFileExists = true, Multiselect = false };
-        if (dialog.ShowDialog(this) == true) SelectRecoveryFile(dialog.FileName);
-    }
-
-    private void SelectRecoveryFile(string path)
-    {
-        try
-        {
-            path = Path.GetFullPath(path);
-            if (!path.EndsWith(".par2", StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
-                throw new ArgumentException(L("请选择一个已存在的 .par2 恢复记录文件。"));
-            RecoveryPathBox.Text = path;
-            RecoverySummaryCard.Visibility = Visibility.Collapsed;
-            SetStatus(L("恢复记录已选择"), L("先校验文件，查看是否需要修复以及恢复记录是否足够。"));
-        }
-        catch (Exception error) { ShowError(error, L("无法选择恢复记录")); }
-    }
-
-    private void Recovery_DragOver(object sender, DragEventArgs e)
-    {
-        e.Effects = !_busy && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
-        e.Handled = true;
-    }
-
-    private void Recovery_Drop(object sender, DragEventArgs e)
-    {
-        e.Handled = true;
-        if (!_busy && e.Data.GetData(DataFormats.FileDrop) is string[] paths && paths.Length == 1)
-            SelectRecoveryFile(paths[0]);
-    }
-
-    private async void Repair_Click(object sender, RoutedEventArgs e)
-    {
-        if (!_busy && !_inspecting) await RunRecoveryAsync(repair: true);
-    }
-
-    private async Task RunRecoveryAsync(bool repair)
-    {
-        var path = RecoveryPathBox.Text;
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path) || !path.EndsWith(".par2", StringComparison.OrdinalIgnoreCase))
-        {
-            ShowError(new ArgumentException(L("请选择一个有效的 .par2 恢复记录文件。")), L("请检查恢复记录"));
-            return;
-        }
-        BeginOperation(repair ? L("正在修复加密文件") : L("正在校验加密文件"));
-        RecoverySummaryCard.Visibility = Visibility.Collapsed;
-        try
-        {
-            var token = _operationCancellation!.Token;
-            var result = await Task.Run(() => repair
-                ? RecoveryService.RepairAsync(path, RecoveryProgressSink(), token)
-                : RecoveryService.VerifyAsync(path, RecoveryProgressSink(), token), token);
-            var title = result.Success ? (repair ? L("文件已修复") : L("文件完整，无需修复"))
-                : result.Repairable ? (repair ? L("仍有损坏需要修复") : L("发现损坏，恢复记录足够修复"))
-                : L("当前恢复记录不足以完成修复");
-            RecoverySummaryTitle.Text = title;
-            RecoverySummaryText.Text = result.Summary;
-            RecoverySummaryCard.Visibility = Visibility.Visible;
-            OperationProgress.Value = 100;
-            _lastResultPath = result.RecoveryFile;
-            OpenResultButton.Visibility = Visibility.Visible;
-            SetStatus(title, result.Success ? L("完成后可返回“解密与还原”打开加密包。") : result.Repairable ? L("点击“修复文件”尝试恢复；完成后重新校验。") : L("请补齐其余恢复记录或从可靠副本重新取得缺失数据。"), error: !result.Success && !result.Repairable);
-        }
-        catch (OperationCanceledException)
-        {
-            SetStatus(L("已取消"), L("本次操作已停止，可再次校验确认文件的当前状态。"));
-            OperationProgress.Value = 0;
-        }
-        catch (Exception error) { ShowError(error, repair ? L("修复未完成") : L("校验未完成")); }
-        finally { EndOperation(); }
-    }
-
-    private IProgress<RecoveryProgress> RecoveryProgressSink() =>
-        new RecoveryForwardProgress(value => Interlocked.Exchange(ref _latestRecoveryProgress, value));
-
-    private void UpdateRecoveryProgress(RecoveryProgress update)
-    {
-        if (!_busy) return;
-        if (update.Percent is int percent) OperationProgress.Value = Math.Clamp(percent, 0, 99);
-        var stage = update.Stage.ToLowerInvariant();
-        var title = stage.Contains("repair") ? L("正在修复加密文件")
-            : stage.Contains("creat") || stage.Contains("generat") ? L("正在创建恢复记录")
-            : stage.Contains("verif") || stage.Contains("check") ? L("正在校验加密文件")
-            : string.IsNullOrEmpty(update.Stage) ? L("正在处理恢复记录") : update.Stage;
-        SetStatus(title, update.Message);
-    }
-
-    private void ShowNotices_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            using var stream = typeof(App).Assembly.GetManifestResourceStream("TwoPassword.ThirdPartyNotices.txt")
-                ?? throw new IOException(L("未能读取此版本内的第三方许可文件。"));
-            using var reader = new StreamReader(stream);
-            var notices = reader.ReadToEnd();
-            var dialog = new Window
-            {
-                Title = L("2Password · 开源组件与许可"), Owner = this,
-                Width = Math.Min(820, SystemParameters.WorkArea.Width - 40), Height = Math.Min(650, SystemParameters.WorkArea.Height - 40),
-                MinWidth = 520, MinHeight = 360, WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Background = Brush("#111925"), Foreground = Brush("#E7EEF7"), FontFamily = FontFamily, FontSize = 12,
-                Resources = Resources
-            };
-            var layout = new DockPanel { Margin = new Thickness(23) };
-            var heading = new TextBlock { Text = L("开源组件与许可"), FontSize = 21, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 16) };
-            DockPanel.SetDock(heading, Dock.Top);
-            layout.Children.Add(heading);
-            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
-            var export = new Button { Content = L("导出 PAR2 源码"), Margin = new Thickness(0, 0, 10, 0) };
-            AutomationProperties.SetAutomationId(export, "ExportRecoverySource");
-            export.Click += async (_, _) =>
-            {
-                var save = new SaveFileDialog { Title = L("导出内附的 PAR2 完整对应源代码"), Filter = L("源代码压缩包 (*.tar.xz)|*.tar.xz"), FileName = "par2cmdline-turbo-source.tar.xz", AddExtension = true, DefaultExt = ".tar.xz", OverwritePrompt = false };
-                if (save.ShowDialog(dialog) != true) return;
-                export.IsEnabled = false;
-                try
-                {
-                    var saved = await RecoveryService.ExportSourceAsync(save.FileName);
-                    MessageBox.Show(dialog, L("PAR2 对应源代码已导出：\n{0}", saved), "2Password", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-                catch (Exception error) { MessageBox.Show(dialog, error.Message, L("导出未完成"), MessageBoxButton.OK, MessageBoxImage.Warning); }
-                finally { export.IsEnabled = true; }
-            };
-            buttons.Children.Add(export);
-            var close = new Button { Content = L("关闭"), MinWidth = 80 };
-            close.Click += (_, _) => dialog.Close();
-            buttons.Children.Add(close);
-            DockPanel.SetDock(buttons, Dock.Bottom);
-            layout.Children.Add(buttons);
-            layout.Children.Add(new TextBox { Text = notices, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, FontFamily = new FontFamily("Consolas, Microsoft YaHei UI"), FontSize = 11 });
-            dialog.Content = layout;
-            dialog.ShowDialog();
-        }
-        catch (Exception error) { ShowError(error, L("无法查看开源许可")); }
-    }
-
-    private void ClearPasswords()
-    {
-        foreach (var entry in _passwordEntries) { entry.Password.Clear(); entry.Confirmation.Clear(); }
-        ExtractPasswordBox.Clear();
-    }
-
-    private void UpdateProgress(PackageProgress progress)
-    {
-        if (!_busy) return;
-        var stage = TranslateStage(progress.Stage);
-        var percent = progress.TotalBytes > 0 ? Math.Clamp(progress.BytesProcessed * 100d / progress.TotalBytes, 0, 99.5) : 0;
-        OperationProgress.Value = percent;
-        var counts = progress.TotalBytes > 0 ? FormatSize(progress.BytesProcessed) + " / " + FormatSize(progress.TotalBytes) : L("正在处理");
-        if (progress.TotalEntries > 0) counts += "  ·  " + L("{0}/{1} 项", progress.EntriesProcessed, progress.TotalEntries);
-        if (_stopwatch.Elapsed.TotalSeconds > 1 && progress.BytesProcessed > 0)
-            counts += "  ·  " + FormatSize((long)(progress.BytesProcessed / _stopwatch.Elapsed.TotalSeconds)) + "/s";
-        if (!string.IsNullOrEmpty(progress.CurrentPath)) counts += "  ·  " + progress.CurrentPath;
-        SetStatus(stage, counts);
-    }
-
-    private static string TranslateStage(string stage)
-    {
-        var value = stage.ToLowerInvariant();
-        if (value.Contains("scan")) return L("正在扫描文件");
-        if (value.Contains("deriv") || value.Contains("password") || value.Contains("key")) return L("正在处理独立密码");
-        if (value.Contains("verif") || value.Contains("auth")) return L("正在验证完整性");
-        if (value.Contains("extract") || value.Contains("decrypt") || value.Contains("restor")) return L("正在解密并还原");
-        if (value.Contains("encrypt") || value.Contains("archiv") || value.Contains("pack")) return L("正在打包并加密");
-        if (value.Contains("commit") || value.Contains("final")) return L("正在完成安全写入");
-        return string.IsNullOrWhiteSpace(stage) ? L("正在处理") : stage;
-    }
-
-    private void SetStatus(string title, string detail, bool error = false)
-    {
-        StatusTitle.Text = title;
-        StatusDetail.Text = detail;
-        StatusDot.Fill = Brush(error ? "#EF9B9B" : "#6BE1C7");
-        StatusTitle.Foreground = Brush(error ? "#F2B4B4" : "#E8F0F7");
-    }
-
-    private void ShowError(Exception error, string title)
-    {
-        var message = UiText.DescribeException(error);
-        SetStatus(title, message, error: true);
-        MessageBox.Show(this, message, "2Password · " + title, MessageBoxButton.OK, MessageBoxImage.Warning);
-    }
-
-    private void Cancel_Click(object sender, RoutedEventArgs e)
-    {
-        _operationCancellation?.Cancel();
-        CancelButton.IsEnabled = false;
-        _progressTimer.Stop();
-        SetStatus(L("正在取消"), L("正在停止处理并清理临时输出，请稍候。"));
-    }
-
-    private void OpenResult_Click(object sender, RoutedEventArgs e)
-    {
-        if (_lastResultPath is null) return;
-        try
-        {
-            if (Directory.Exists(_lastResultPath)) Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true, ArgumentList = { _lastResultPath } });
-            else
-            {
-                var info = new ProcessStartInfo("explorer.exe") { UseShellExecute = true };
-                info.Arguments = "/select,\"" + _lastResultPath + "\"";
-                Process.Start(info);
-            }
-        }
-        catch (Exception error) { ShowError(error, L("无法打开文件位置")); }
-    }
-
-    private async void ExtractPassword_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && !_busy && !_inspecting) { e.Handled = true; await ExtractAsync(); }
-    }
-
-    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ClickCount == 2) { ToggleMaximize(); return; }
-        try { DragMove(); } catch (InvalidOperationException) { }
-    }
-    private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
-    private void Maximize_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
-    private void ToggleMaximize() => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
-    private void Window_Closing(object? sender, CancelEventArgs e)
-    {
-        if (!_busy) { ClearPasswords(); return; }
-        e.Cancel = true;
-        if (MessageBox.Show(this, L("正在处理文件。要取消当前操作并关闭吗？"), "2Password", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-        _closeWhenFinished = true;
-        _operationCancellation?.Cancel();
-        CancelButton.IsEnabled = false;
-        _progressTimer.Stop();
-        SetStatus(L("正在取消"), L("安全清理完成后将自动关闭。"));
-    }
-
-    private static string FormatSize(long bytes)
-    {
-        string[] units = ["B", "KiB", "MiB", "GiB", "TiB"];
-        var value = (double)Math.Max(0, bytes);
-        var index = 0;
-        while (value >= 1024 && index < units.Length - 1) { value /= 1024; index++; }
-        return value.ToString(index == 0 ? "0" : "0.0") + " " + units[index];
-    }
-
-    private static SolidColorBrush Brush(string color)
-    {
-        var result = (SolidColorBrush)new BrushConverter().ConvertFromString(color)!;
-        result.Freeze();
-        return result;
-    }
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
-
-    private sealed class PasswordEntry
-    {
-        public TextBlock Label { get; set; } = null!;
-        public TextBlock ConfirmationLabel { get; set; } = null!;
-        public PasswordBox Password { get; set; } = null!;
-        public PasswordBox Confirmation { get; set; } = null!;
-        public Button Remove { get; set; } = null!;
-    }
-
-    private sealed class ForwardProgress(Action<PackageProgress> report) : IProgress<PackageProgress>
-    {
-        public void Report(PackageProgress value) => report(value);
-    }
-
-    private sealed class RecoveryForwardProgress(Action<RecoveryProgress> report) : IProgress<RecoveryProgress>
-    {
-        public void Report(RecoveryProgress value) => report(value);
+        public void Report(T value) => report(value);
     }
 }

@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <resheader name="resmimetype">
     <value>text/microsoft-resx</value>
@@ -12,681 +12,6 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
   </resheader>
-  <data name="最小化" xml:space="preserve">
-    <value>Minimize</value>
-  </data>
-  <data name="最大化或还原" xml:space="preserve">
-    <value>Maximize or restore</value>
-  </data>
-  <data name="关闭" xml:space="preserve">
-    <value>Close</value>
-  </data>
-  <data name="Language / 语言" xml:space="preserve">
-    <value>Language</value>
-  </data>
-  <data name="每一把钥匙，都独立。" xml:space="preserve">
-    <value>Every key is independent.</value>
-  </data>
-  <data name="工作空间" xml:space="preserve">
-    <value>WORKSPACE</value>
-  </data>
-  <data name="创建加密包" xml:space="preserve">
-    <value>Create package</value>
-  </data>
-  <data name="解密与还原" xml:space="preserve">
-    <value>Decrypt &amp; restore</value>
-  </data>
-  <data name="安全，留在本地。" xml:space="preserve">
-    <value>Private. Local. Yours.</value>
-  </data>
-  <data name="无需账户，无需联网。&#10;文件始终由你掌控。" xml:space="preserve">
-    <value>No account. No connection.
-Your files stay with you.</value>
-  </data>
-  <data name="开源组件与许可" xml:space="preserve">
-    <value>Open-source licenses</value>
-  </data>
-  <data name="VERSION  1.0.0" xml:space="preserve">
-    <value>VERSION  1.0.0</value>
-  </data>
-  <data name="YOUR FILES. YOUR KEYS." xml:space="preserve">
-    <value>YOUR FILES. YOUR KEYS.</value>
-  </data>
-  <data name="一份文件，多把独立钥匙。" xml:space="preserve">
-    <value>One package. Independent keys.</value>
-  </data>
-  <data name="从日常文件到超大目录，让每个拥有密码的人都能完整还原。" xml:space="preserve">
-    <value>Protect everyday files or large folders. Any valid password restores everything.</value>
-  </data>
-  <data name="选择内容  →  设置密码  →  加密压缩与恢复记录，一次完成" xml:space="preserve">
-    <value>Choose files  →  Set passwords  →  Encrypt, compress and add recovery data</value>
-  </data>
-  <data name="加密包已创建" xml:space="preserve">
-    <value>Package created</value>
-  </data>
-  <data name="选择要保护的内容" xml:space="preserve">
-    <value>Choose what to protect</value>
-  </data>
-  <data name="拖入一个文件或文件夹" xml:space="preserve">
-    <value>Drop a file or folder here</value>
-  </data>
-  <data name="支持中文、日语、Emoji 与深层目录" xml:space="preserve">
-    <value>Unicode names, emoji and deep folder trees</value>
-  </data>
-  <data name="选择文件" xml:space="preserve">
-    <value>Choose file</value>
-  </data>
-  <data name="选择文件夹" xml:space="preserve">
-    <value>Choose folder</value>
-  </data>
-  <data name="设置独立密码" xml:space="preserve">
-    <value>Set independent passwords</value>
-  </data>
-  <data name="＋  添加密码" xml:space="preserve">
-    <value>＋  Add password</value>
-  </data>
-  <data name="任意一个密码都能解包；解密不会显示或恢复其他密码。" xml:space="preserve">
-    <value>Any one password unlocks the package. Unlocking never reveals the other passwords.</value>
-  </data>
-  <data name="建议使用 12 个以上字符的独立长密码。请妥善保存，遗忘后无法找回。" xml:space="preserve">
-    <value>Use distinct passphrases of 12+ characters. Keep them safe: forgotten passwords cannot be recovered.</value>
-  </data>
-  <data name="生成独立加密包" xml:space="preserve">
-    <value>Create a portable package</value>
-  </data>
-  <data name="输出文件" xml:space="preserve">
-    <value>Output file</value>
-  </data>
-  <data name="输出 EXE 路径" xml:space="preserve">
-    <value>Output EXE path</value>
-  </data>
-  <data name="加密 EXE 的完整保存路径" xml:space="preserve">
-    <value>Full path for the encrypted EXE</value>
-  </data>
-  <data name="浏览…" xml:space="preserve">
-    <value>Browse…</value>
-  </data>
-  <data name="选择加密包保存位置" xml:space="preserve">
-    <value>Choose where to save the package</value>
-  </data>
-  <data name="压缩方式" xml:space="preserve">
-    <value>Compression</value>
-  </data>
-  <data name="Zstd（推荐） · 兼顾速度与压缩率" xml:space="preserve">
-    <value>Zstd (recommended) · Balanced speed and size</value>
-  </data>
-  <data name="Brotli · 另一种压缩选择" xml:space="preserve">
-    <value>Brotli · Alternative compression</value>
-  </data>
-  <data name="不压缩 · 适合视频、照片与已压缩文件" xml:space="preserve">
-    <value>No compression · For video, photos and compressed files</value>
-  </data>
-  <data name="打包方式" xml:space="preserve">
-    <value>Package layout</value>
-  </data>
-  <data name="自动（推荐）" xml:space="preserve">
-    <value>Automatic (recommended)</value>
-  </data>
-  <data name="单个 EXE" xml:space="preserve">
-    <value>Single EXE</value>
-  </data>
-  <data name="EXE + 加密数据文件" xml:space="preserve">
-    <value>EXE + encrypted data file</value>
-  </data>
-  <data name="恢复记录（PAR2，可选）" xml:space="preserve">
-    <value>Recovery data (PAR2, optional)</value>
-  </data>
-  <data name="恢复记录比例" xml:space="preserve">
-    <value>Recovery percentage</value>
-  </data>
-  <data name="不创建恢复记录" xml:space="preserve">
-    <value>No recovery data</value>
-  </data>
-  <data name="5% 恢复记录" xml:space="preserve">
-    <value>5% recovery data</value>
-  </data>
-  <data name="10% 恢复记录（推荐）" xml:space="preserve">
-    <value>10% recovery (recommended)</value>
-  </data>
-  <data name="20% 恢复记录" xml:space="preserve">
-    <value>20% recovery data</value>
-  </data>
-  <data name="自动模式：小包生成单个 EXE；超过单 EXE 容量时，生成 EXE + .2pw。双文件须一起复制并保持同目录。接收方无需安装 2Password 或 .NET。" xml:space="preserve">
-    <value>Automatic: small packages use one EXE; larger packages use an EXE and a .2pw file. Keep both in the same folder. Recipients need neither 2Password nor .NET installed.</value>
-  </data>
-  <data name="默认生成 10% PAR2 恢复记录，与加密压缩一并完成。请一起保存全部输出文件；恢复记录不能找回密码。" xml:space="preserve">
-    <value>The default adds 10% PAR2 recovery data as part of creation. Keep all output files together. Recovery data cannot recover a forgotten password.</value>
-  </data>
-  <data name="WELCOME BACK TO YOUR FILES." xml:space="preserve">
-    <value>WELCOME BACK TO YOUR FILES.</value>
-  </data>
-  <data name="用一把钥匙，打开全部。" xml:space="preserve">
-    <value>One key opens everything.</value>
-  </data>
-  <data name="输入任意一个有效密码，将内容完整还原到新文件夹。" xml:space="preserve">
-    <value>Enter any valid password to restore the contents into a new folder.</value>
-  </data>
-  <data name="正常文件单次流式认证；发现损坏时尝试恢复，修复后重新认证并还原。" xml:space="preserve">
-    <value>Healthy packages use one streaming authentication pass. If damage is found, recovery is attempted before a fresh authenticated restore.</value>
-  </data>
-  <data name="加密包" xml:space="preserve">
-    <value>Encrypted package</value>
-  </data>
-  <data name="重新读取" xml:space="preserve">
-    <value>Reload</value>
-  </data>
-  <data name="选择加密包" xml:space="preserve">
-    <value>Choose package</value>
-  </data>
-  <data name="选择或拖入加密 EXE / .2pw" xml:space="preserve">
-    <value>Choose or drop an encrypted EXE / .2pw</value>
-  </data>
-  <data name="支持由 2Password 创建的文件" xml:space="preserve">
-    <value>For packages created with 2Password</value>
-  </data>
-  <data name="输入解密密码" xml:space="preserve">
-    <value>Enter a password</value>
-  </data>
-  <data name="任意一个有效密码即可，注意大小写与空格。" xml:space="preserve">
-    <value>Any valid password works. Case and spaces matter.</value>
-  </data>
-  <data name="解密密码" xml:space="preserve">
-    <value>Decryption password</value>
-  </data>
-  <data name="密码仅在本次操作中使用。" xml:space="preserve">
-    <value>The password is used only for this operation.</value>
-  </data>
-  <data name="还原位置" xml:space="preserve">
-    <value>Restore destination</value>
-  </data>
-  <data name="新建还原文件夹路径" xml:space="preserve">
-    <value>New restore folder path</value>
-  </data>
-  <data name="选择还原位置" xml:space="preserve">
-    <value>Choose the restore location</value>
-  </data>
-  <data name="将在此位置新建文件夹；完成完整性验证后，才会显示还原结果。" xml:space="preserve">
-    <value>A new folder will be created here. Results appear only after integrity verification succeeds.</value>
-  </data>
-  <data name="解包前完整检查恢复记录" xml:space="preserve">
-    <value>Fully verify recovery data before extraction</value>
-  </data>
-  <data name="解包前完整检查恢复记录（可选，会增加一次完整读取）" xml:space="preserve">
-    <value>Fully verify recovery data first (optional; adds one complete read)</value>
-  </data>
-  <data name="文件内容与文件名均受加密保护，解密全程离线完成。" xml:space="preserve">
-    <value>File contents and names are encrypted. Decryption stays offline.</value>
-  </data>
-  <data name="高级工具：手动校验与修复" xml:space="preserve">
-    <value>Advanced tools: manual verification and repair</value>
-  </data>
-  <data name="←  返回解密与还原" xml:space="preserve">
-    <value>←  Back to decrypt &amp; restore</value>
-  </data>
-  <data name="A SECOND CHANCE FOR YOUR FILES." xml:space="preserve">
-    <value>A SECOND CHANCE FOR YOUR FILES.</value>
-  </data>
-  <data name="为文件损坏，留一份余量。" xml:space="preserve">
-    <value>Keep a margin for file damage.</value>
-  </data>
-  <data name="使用预先创建的 PAR2 恢复记录，校验并修复受损加密文件。" xml:space="preserve">
-    <value>Use existing PAR2 recovery data to verify and repair damaged encrypted files.</value>
-  </data>
-  <data name="恢复记录" xml:space="preserve">
-    <value>Recovery data</value>
-  </data>
-  <data name="选择 .par2 文件" xml:space="preserve">
-    <value>Choose .par2 file</value>
-  </data>
-  <data name="PAR2 恢复记录路径" xml:space="preserve">
-    <value>PAR2 recovery file path</value>
-  </data>
-  <data name="也可以拖入 .par2 文件。请将原加密包、数据文件及完整的恢复记录放在同一目录。" xml:space="preserve">
-    <value>You can also drop a .par2 file here. Keep the package, data file and all recovery files in the same folder.</value>
-  </data>
-  <data name="先校验，再决定是否修复" xml:space="preserve">
-    <value>Verify first, then repair if needed</value>
-  </data>
-  <data name="校验会检查受保护文件及恢复记录，判断文件是否完整、损坏能否修复。若恢复记录足够，点击“修复文件”尝试还原受损密文。" xml:space="preserve">
-    <value>Verification checks the protected files and recovery data. If enough recovery data is available, choose Repair files to reconstruct the damaged ciphertext.</value>
-  </data>
-  <data name="这一步不需要密码。修复完成后，仍须有效密码才能解密。" xml:space="preserve">
-    <value>No password is needed for this step. Decryption still requires a valid password after repair.</value>
-  </data>
-  <data name="校验结果" xml:space="preserve">
-    <value>Verification result</value>
-  </data>
-  <data name="恢复操作结果" xml:space="preserve">
-    <value>Recovery operation result</value>
-  </data>
-  <data name="准备就绪" xml:space="preserve">
-    <value>Ready</value>
-  </data>
-  <data name="选择内容，设置密码，然后生成加密包。" xml:space="preserve">
-    <value>Choose content, set passwords, then create your package.</value>
-  </data>
-  <data name="打开位置" xml:space="preserve">
-    <value>Open location</value>
-  </data>
-  <data name="取消" xml:space="preserve">
-    <value>Cancel</value>
-  </data>
-  <data name="修复文件" xml:space="preserve">
-    <value>Repair files</value>
-  </data>
-  <data name="创建加密包   →" xml:space="preserve">
-    <value>Create package   →</value>
-  </data>
-  <data name="当前操作进度" xml:space="preserve">
-    <value>Current operation progress</value>
-  </data>
-  <data name="版本 {0}" xml:space="preserve">
-    <value>VERSION  {0}</value>
-  </data>
-  <data name="YOUR SECURE PACKAGE." xml:space="preserve">
-    <value>YOUR SECURE PACKAGE.</value>
-  </data>
-  <data name="你的文件，已安全封存。" xml:space="preserve">
-    <value>Your files, securely sealed.</value>
-  </data>
-  <data name="这是一个独立加密包。输入有效密码，即可离线解密并完整还原。" xml:space="preserve">
-    <value>This is a portable encrypted package. Enter a valid password to restore it offline.</value>
-  </data>
-  <data name="解密并还原   →" xml:space="preserve">
-    <value>Decrypt &amp; restore   →</value>
-  </data>
-  <data name="解密并还原" xml:space="preserve">
-    <value>Decrypt &amp; restore</value>
-  </data>
-  <data name="输入密码，选择一个新的还原文件夹。" xml:space="preserve">
-    <value>Enter a password and choose a new restore folder.</value>
-  </data>
-  <data name="2Password · 解密加密包" xml:space="preserve">
-    <value>2Password · Unlock package</value>
-  </data>
-  <data name="操作记录" xml:space="preserve">
-    <value>Operation details</value>
-  </data>
-  <data name="语言已切换。请重新校验，以当前语言查看详细结果。" xml:space="preserve">
-    <value>The language has changed. Run verification again to view detailed results in this language.</value>
-  </data>
-  <data name="语言已切换，但设置无法保存" xml:space="preserve">
-    <value>Language changed, but the preference could not be saved</value>
-  </data>
-  <data name="校验文件   →" xml:space="preserve">
-    <value>Verify files   →</value>
-  </data>
-  <data name="校验文件" xml:space="preserve">
-    <value>Verify files</value>
-  </data>
-  <data name="选择 PAR2 恢复记录，校验文件或尝试修复。" xml:space="preserve">
-    <value>Choose PAR2 recovery data to verify files or attempt a repair.</value>
-  </data>
-  <data name="选择要加密的文件" xml:space="preserve">
-    <value>Choose a file to encrypt</value>
-  </data>
-  <data name="所有文件|*.*" xml:space="preserve">
-    <value>All files|*.*</value>
-  </data>
-  <data name="选择要加密的文件夹" xml:space="preserve">
-    <value>Choose a folder to encrypt</value>
-  </data>
-  <data name="找不到此文件或文件夹。" xml:space="preserve">
-    <value>The file or folder could not be found.</value>
-  </data>
-  <data name="加密文件" xml:space="preserve">
-    <value>Encrypted files</value>
-  </data>
-  <data name="内容已选择" xml:space="preserve">
-    <value>Content selected</value>
-  </data>
-  <data name="将保留文件夹结构、文件内容与多语言名称。" xml:space="preserve">
-    <value>Folder structure, file contents and Unicode names will be preserved.</value>
-  </data>
-  <data name="已准备保护所选文件。" xml:space="preserve">
-    <value>The selected file is ready to protect.</value>
-  </data>
-  <data name="无法选择内容" xml:space="preserve">
-    <value>Could not select content</value>
-  </data>
-  <data name="无法选择空闲的输出名称，请手动指定新的路径。" xml:space="preserve">
-    <value>No unused output name was found. Please enter a new path.</value>
-  </data>
-  <data name="保存独立加密包" xml:space="preserve">
-    <value>Save the portable encrypted package</value>
-  </data>
-  <data name="独立加密包 (*.exe)|*.exe" xml:space="preserve">
-    <value>Portable encrypted package (*.exe)|*.exe</value>
-  </data>
-  <data name="加密文件.protected.exe" xml:space="preserve">
-    <value>Encrypted files.protected.exe</value>
-  </data>
-  <data name="已选择新的文件名" xml:space="preserve">
-    <value>A new filename was selected</value>
-  </data>
-  <data name="原名称或配套文件已存在。已在路径框中选择新名称，现有文件不会被覆盖。" xml:space="preserve">
-    <value>That name or its related files already exist. A new name is shown in the path field. Existing files will not be overwritten.</value>
-  </data>
-  <data name="无法选择输出位置" xml:space="preserve">
-    <value>Could not select the output location</value>
-  </data>
-  <data name="一次选择一个项目" xml:space="preserve">
-    <value>Choose one item at a time</value>
-  </data>
-  <data name="可将多个文件先放进同一个文件夹，再拖入整个文件夹。" xml:space="preserve">
-    <value>To protect several files together, place them in one folder and drop that folder here.</value>
-  </data>
-  <data name="再次输入" xml:space="preserve">
-    <value>Confirm password</value>
-  </data>
-  <data name="移除此密码" xml:space="preserve">
-    <value>Remove this password</value>
-  </data>
-  <data name="独立密码 {0}" xml:space="preserve">
-    <value>Independent password {0}</value>
-  </data>
-  <data name="确认密码 {0}" xml:space="preserve">
-    <value>Confirm password {0}</value>
-  </data>
-  <data name="＋  添加密码  {0}/16" xml:space="preserve">
-    <value>＋  Add password  {0}/16</value>
-  </data>
-  <data name="选择 2Password 加密包" xml:space="preserve">
-    <value>Choose a 2Password package</value>
-  </data>
-  <data name="2Password 加密包|*.exe;*.2pw|所有文件|*.*" xml:space="preserve">
-    <value>2Password packages|*.exe;*.2pw|All files|*.*</value>
-  </data>
-  <data name="{0}_已还原" xml:space="preserve">
-    <value>{0}_restored</value>
-  </data>
-  <data name="加密包已就绪" xml:space="preserve">
-    <value>Package ready</value>
-  </data>
-  <data name="输入任意一个有效密码，即可还原全部内容。" xml:space="preserve">
-    <value>Enter any valid password to restore all contents.</value>
-  </data>
-  <data name="无法读取包信息。若有匹配的 PAR2，开始解包时会尝试恢复损坏的数据。双文件包需要配套 .2pw；补齐后可点击“重新读取”。" xml:space="preserve">
-    <value>Package information could not be read. Matching PAR2 files can be used to attempt recovery when extraction starts. A detached package needs its companion .2pw file; put it beside the EXE, then choose Reload.</value>
-  </data>
-  <data name="无法读取加密包" xml:space="preserve">
-    <value>Could not read the package</value>
-  </data>
-  <data name="未压缩" xml:space="preserve">
-    <value>No compression</value>
-  </data>
-  <data name="{0}  ·  {1} 个独立密码  ·  {2}" xml:space="preserve">
-    <value>{0}  ·  {1} independent passwords  ·  {2}</value>
-  </data>
-  <data name="外置加密数据：{0}" xml:space="preserve">
-    <value>Encrypted data file: {0}</value>
-  </data>
-  <data name="选择还原文件夹的上级位置" xml:space="preserve">
-    <value>Choose the parent folder for restoration</value>
-  </data>
-  <data name="2Password_已还原" xml:space="preserve">
-    <value>2Password_restored</value>
-  </data>
-  <data name="请先选择一个文件或文件夹。" xml:space="preserve">
-    <value>Choose a file or folder first.</value>
-  </data>
-  <data name="请选择加密 EXE 的保存位置。" xml:space="preserve">
-    <value>Choose where to save the encrypted EXE.</value>
-  </data>
-  <data name="独立加密包的文件名应以 .exe 结尾。" xml:space="preserve">
-    <value>The portable package filename must end in .exe.</value>
-  </data>
-  <data name="输出名称或配套的 .2pw / PAR2 文件已存在。请点击“浏览”选择新的名称；现有文件不会被覆盖。" xml:space="preserve">
-    <value>The output name or its related .2pw / PAR2 files already exist. Use Browse to choose a new name. Existing files will not be overwritten.</value>
-  </data>
-  <data name="{0} 至少需要 8 个字符；建议使用 12 个以上字符的长密码。" xml:space="preserve">
-    <value>{0} needs at least 8 characters. A passphrase of 12+ characters is recommended.</value>
-  </data>
-  <data name="{0} 两次输入不一致，请重新检查。" xml:space="preserve">
-    <value>The two entries for {0} do not match. Please check them.</value>
-  </data>
-  <data name="各个密码必须不同，请移除重复密码。" xml:space="preserve">
-    <value>Each password must be different. Remove the duplicate password.</value>
-  </data>
-  <data name="正在准备加密" xml:space="preserve">
-    <value>Preparing encryption</value>
-  </data>
-  <data name="请检查创建设置" xml:space="preserve">
-    <value>Check the creation settings</value>
-  </data>
-  <data name="请先选择一个有效的 2Password 加密包。" xml:space="preserve">
-    <value>Choose a valid 2Password package first.</value>
-  </data>
-  <data name="请输入解密密码。" xml:space="preserve">
-    <value>Enter a decryption password.</value>
-  </data>
-  <data name="请选择新的还原文件夹。" xml:space="preserve">
-    <value>Choose a new restore folder.</value>
-  </data>
-  <data name="还原位置已经存在。请使用一个尚不存在的新文件夹，避免覆盖现有内容。" xml:space="preserve">
-    <value>The restore destination already exists. Choose a new folder to protect existing contents.</value>
-  </data>
-  <data name="正在检查加密文件" xml:space="preserve">
-    <value>Checking encrypted files</value>
-  </data>
-  <data name="文件已完整还原" xml:space="preserve">
-    <value>Files restored successfully</value>
-  </data>
-  <data name="请检查解密设置" xml:space="preserve">
-    <value>Check the decryption settings</value>
-  </data>
-  <data name="加密包已完成，正在创建恢复记录" xml:space="preserve">
-    <value>Package complete; creating recovery data</value>
-  </data>
-  <data name="{0}% PAR2 恢复记录；加密包会保留。" xml:space="preserve">
-    <value>Creating {0}% PAR2 recovery data. The completed package will be kept.</value>
-  </data>
-  <data name="{0} 个文件 · {1} · {2:0.0} 秒" xml:space="preserve">
-    <value>{0} files · {1} · {2:0.0} seconds</value>
-  </data>
-  <data name=" · 请一起复制 EXE 和 .2pw" xml:space="preserve">
-    <value> · Copy both the EXE and .2pw</value>
-  </data>
-  <data name=" · PAR2 恢复记录已创建" xml:space="preserve">
-    <value> · PAR2 recovery data created</value>
-  </data>
-  <data name="加密包已保留，恢复记录已取消" xml:space="preserve">
-    <value>Package kept; recovery creation cancelled</value>
-  </data>
-  <data name="加密文件已完整创建；尚未完成 PAR2 恢复记录。" xml:space="preserve">
-    <value>The encrypted package is complete. PAR2 recovery data was not completed.</value>
-  </data>
-  <data name="已取消" xml:space="preserve">
-    <value>Cancelled</value>
-  </data>
-  <data name="操作已停止，未发布不完整的输出。" xml:space="preserve">
-    <value>The operation stopped without publishing an incomplete output.</value>
-  </data>
-  <data name="加密包已保留，恢复记录未完成" xml:space="preserve">
-    <value>Package kept; recovery data incomplete</value>
-  </data>
-  <data name="加密文件已成功创建并保留。" xml:space="preserve">
-    <value>The encrypted package was created successfully and has been kept. </value>
-  </data>
-  <data name="加密包已成功创建并保留在：&#10;{0}&#10;&#10;PAR2 恢复记录未完成：&#10;{1}" xml:space="preserve">
-    <value>The encrypted package was created and kept at:
-{0}
-
-PAR2 recovery creation did not complete:
-{1}</value>
-  </data>
-  <data name="2Password · 恢复记录未完成" xml:space="preserve">
-    <value>2Password · Recovery data incomplete</value>
-  </data>
-  <data name="操作未完成" xml:space="preserve">
-    <value>Operation did not complete</value>
-  </data>
-  <data name="正在安全处理，请稍候…" xml:space="preserve">
-    <value>Processing securely. Please wait…</value>
-  </data>
-  <data name="加密包已创建；恢复记录未完成" xml:space="preserve">
-    <value>Package created; recovery data incomplete</value>
-  </data>
-  <data name="加密包与恢复记录已创建" xml:space="preserve">
-    <value>Package and recovery data created</value>
-  </data>
-  <data name="请一起复制 EXE 与 .2pw，并保持同一目录和原文件名。" xml:space="preserve">
-    <value>Copy both the EXE and .2pw. Keep them in the same folder with their original filenames.</value>
-  </data>
-  <data name="复制加密 EXE，即可在其他 Windows 电脑离线解密。" xml:space="preserve">
-    <value>Copy the encrypted EXE to another Windows computer to decrypt it offline.</value>
-  </data>
-  <data name=" 同时保留以下全部 .par2 文件，才能使用恢复记录校验或修复。" xml:space="preserve">
-    <value> Also keep every .par2 file listed below for verification and repair.</value>
-  </data>
-  <data name=" 加密内容已保留，当前没有一套已完成的恢复记录。" xml:space="preserve">
-    <value> The encrypted contents are safe, but there is no complete recovery set.</value>
-  </data>
-  <data name="选择 PAR2 恢复记录" xml:space="preserve">
-    <value>Choose PAR2 recovery data</value>
-  </data>
-  <data name="PAR2 恢复记录 (*.par2)|*.par2" xml:space="preserve">
-    <value>PAR2 recovery files (*.par2)|*.par2</value>
-  </data>
-  <data name="请选择一个已存在的 .par2 恢复记录文件。" xml:space="preserve">
-    <value>Choose an existing .par2 recovery file.</value>
-  </data>
-  <data name="恢复记录已选择" xml:space="preserve">
-    <value>Recovery data selected</value>
-  </data>
-  <data name="先校验文件，查看是否需要修复以及恢复记录是否足够。" xml:space="preserve">
-    <value>Verify first to see whether repair is needed and enough recovery data is available.</value>
-  </data>
-  <data name="无法选择恢复记录" xml:space="preserve">
-    <value>Could not select recovery data</value>
-  </data>
-  <data name="请选择一个有效的 .par2 恢复记录文件。" xml:space="preserve">
-    <value>Choose a valid .par2 recovery file.</value>
-  </data>
-  <data name="请检查恢复记录" xml:space="preserve">
-    <value>Check the recovery data</value>
-  </data>
-  <data name="正在修复加密文件" xml:space="preserve">
-    <value>Repairing encrypted files</value>
-  </data>
-  <data name="正在校验加密文件" xml:space="preserve">
-    <value>Verifying encrypted files</value>
-  </data>
-  <data name="文件已修复" xml:space="preserve">
-    <value>Files repaired</value>
-  </data>
-  <data name="文件完整，无需修复" xml:space="preserve">
-    <value>Files are intact; no repair needed</value>
-  </data>
-  <data name="仍有损坏需要修复" xml:space="preserve">
-    <value>Some damage still needs repair</value>
-  </data>
-  <data name="发现损坏，恢复记录足够修复" xml:space="preserve">
-    <value>Damage found; repair is possible</value>
-  </data>
-  <data name="当前恢复记录不足以完成修复" xml:space="preserve">
-    <value>Not enough recovery data to complete repair</value>
-  </data>
-  <data name="完成后可返回“解密与还原”打开加密包。" xml:space="preserve">
-    <value>Return to Decrypt &amp; restore to open the package.</value>
-  </data>
-  <data name="点击“修复文件”尝试恢复；完成后重新校验。" xml:space="preserve">
-    <value>Choose Repair files to attempt recovery, then verify again.</value>
-  </data>
-  <data name="请补齐其余恢复记录或从可靠副本重新取得缺失数据。" xml:space="preserve">
-    <value>Add the remaining recovery files or obtain the missing data from a reliable copy.</value>
-  </data>
-  <data name="本次操作已停止，可再次校验确认文件的当前状态。" xml:space="preserve">
-    <value>The operation stopped. Verify again to check the files' current state.</value>
-  </data>
-  <data name="修复未完成" xml:space="preserve">
-    <value>Repair did not complete</value>
-  </data>
-  <data name="校验未完成" xml:space="preserve">
-    <value>Verification did not complete</value>
-  </data>
-  <data name="正在创建恢复记录" xml:space="preserve">
-    <value>Creating recovery data</value>
-  </data>
-  <data name="正在处理恢复记录" xml:space="preserve">
-    <value>Processing recovery data</value>
-  </data>
-  <data name="未能读取此版本内的第三方许可文件。" xml:space="preserve">
-    <value>The bundled third-party notices could not be read.</value>
-  </data>
-  <data name="2Password · 开源组件与许可" xml:space="preserve">
-    <value>2Password · Open-source licenses</value>
-  </data>
-  <data name="导出 PAR2 源码" xml:space="preserve">
-    <value>Export PAR2 source</value>
-  </data>
-  <data name="导出内附的 PAR2 完整对应源代码" xml:space="preserve">
-    <value>Export the bundled corresponding PAR2 source</value>
-  </data>
-  <data name="源代码压缩包 (*.tar.xz)|*.tar.xz" xml:space="preserve">
-    <value>Source archive (*.tar.xz)|*.tar.xz</value>
-  </data>
-  <data name="PAR2 对应源代码已导出：&#10;{0}" xml:space="preserve">
-    <value>The corresponding PAR2 source was exported to:
-{0}</value>
-  </data>
-  <data name="导出未完成" xml:space="preserve">
-    <value>Export did not complete</value>
-  </data>
-  <data name="无法查看开源许可" xml:space="preserve">
-    <value>Could not open license notices</value>
-  </data>
-  <data name="正在处理" xml:space="preserve">
-    <value>Processing</value>
-  </data>
-  <data name="{0}/{1} 项" xml:space="preserve">
-    <value>{0}/{1} items</value>
-  </data>
-  <data name="正在扫描文件" xml:space="preserve">
-    <value>Scanning files</value>
-  </data>
-  <data name="正在处理独立密码" xml:space="preserve">
-    <value>Processing independent passwords</value>
-  </data>
-  <data name="正在验证完整性" xml:space="preserve">
-    <value>Verifying integrity</value>
-  </data>
-  <data name="正在解密并还原" xml:space="preserve">
-    <value>Decrypting and restoring</value>
-  </data>
-  <data name="正在打包并加密" xml:space="preserve">
-    <value>Packing and encrypting</value>
-  </data>
-  <data name="正在完成安全写入" xml:space="preserve">
-    <value>Finishing the secure write</value>
-  </data>
-  <data name="密码不正确，或加密包已损坏。请确认大小写、空格及文件完整性。" xml:space="preserve">
-    <value>The password is incorrect or the package is damaged. Check case, spaces and file integrity.</value>
-  </data>
-  <data name="没有访问权限。请检查文件权限，或选择你有权限读写的位置。" xml:space="preserve">
-    <value>Access was denied. Check permissions or choose a location you can read and write.</value>
-  </data>
-  <data name="此路径超过 Windows 或目标文件系统的限制。请使用更短的还原位置。" xml:space="preserve">
-    <value>The path exceeds a Windows or filesystem limit. Choose a shorter restore location.</value>
-  </data>
-  <data name="可用内存不足，请关闭其他占用内存的程序后重试。" xml:space="preserve">
-    <value>Not enough memory is available. Close other memory-intensive apps and try again.</value>
-  </data>
-  <data name="正在取消" xml:space="preserve">
-    <value>Cancelling</value>
-  </data>
-  <data name="正在停止处理并清理临时输出，请稍候。" xml:space="preserve">
-    <value>Stopping the operation and cleaning temporary output. Please wait.</value>
-  </data>
-  <data name="无法打开文件位置" xml:space="preserve">
-    <value>Could not open the file location</value>
-  </data>
-  <data name="正在处理文件。要取消当前操作并关闭吗？" xml:space="preserve">
-    <value>Files are being processed. Cancel this operation and close the app?</value>
-  </data>
-  <data name="安全清理完成后将自动关闭。" xml:space="preserve">
-    <value>The app will close after cleanup finishes.</value>
-  </data>
   <data name="Language must be en or zh-CN." xml:space="preserve">
     <value>Language must be en or zh-CN.</value>
   </data>
@@ -781,13 +106,376 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   <data name="Password input exceeds the supported limit." xml:space="preserve">
     <value>Password input exceeds the supported limit.</value>
   </data>
+  <data name="还原" xml:space="preserve">
+    <value>Restore</value>
+  </data>
+  <data name="最大化" xml:space="preserve">
+    <value>Maximize</value>
+  </data>
+  <data name="正在处理文件。取消并关闭？" xml:space="preserve">
+    <value>Still working. Cancel and close?</value>
+  </data>
+  <data name="这个文件不是 2Password 加密包。" xml:space="preserve">
+    <value>This file is not a 2Password package.</value>
+  </data>
+  <data name="找不到此文件或文件夹。" xml:space="preserve">
+    <value>File or folder not found.</value>
+  </data>
+  <data name="修复加密包…" xml:space="preserve">
+    <value>Repair a package…</value>
+  </data>
+  <data name="开源许可" xml:space="preserve">
+    <value>Open-source licenses</value>
+  </data>
+  <data name="版本 {0}" xml:space="preserve">
+    <value>Version {0}</value>
+  </data>
+  <data name="选择要加密的文件" xml:space="preserve">
+    <value>Choose a file to encrypt</value>
+  </data>
+  <data name="所有文件|*.*" xml:space="preserve">
+    <value>All files|*.*</value>
+  </data>
+  <data name="选择要加密的文件夹" xml:space="preserve">
+    <value>Choose a folder to encrypt</value>
+  </data>
+  <data name="打开加密包" xml:space="preserve">
+    <value>Open a package</value>
+  </data>
+  <data name="2Password 加密包|*.exe;*.2pw;*.par2|所有文件|*.*" xml:space="preserve">
+    <value>2Password packages|*.exe;*.2pw;*.par2|All files|*.*</value>
+  </data>
+  <data name="拖入文件或文件夹" xml:space="preserve">
+    <value>Drop a file or folder here</value>
+  </data>
+  <data name="一次只能放一项" xml:space="preserve">
+    <value>One item at a time</value>
+  </data>
+  <data name="松开，打开加密包" xml:space="preserve">
+    <value>Release to open</value>
+  </data>
+  <data name="松开，检查恢复记录" xml:space="preserve">
+    <value>Release to check the recovery data</value>
+  </data>
+  <data name="松开，开始加密" xml:space="preserve">
+    <value>Release to encrypt</value>
+  </data>
+  <data name="加密文件" xml:space="preserve">
+    <value>Encrypted</value>
+  </data>
+  <data name="空文件夹" xml:space="preserve">
+    <value>Empty folder</value>
+  </data>
+  <data name="保存加密包" xml:space="preserve">
+    <value>Save package</value>
+  </data>
+  <data name="加密包 (*.exe)|*.exe" xml:space="preserve">
+    <value>Package (*.exe)|*.exe</value>
+  </data>
+  <data name="先选择保存位置。" xml:space="preserve">
+    <value>Choose where to save it first.</value>
+  </data>
+  <data name="正在生成恢复记录" xml:space="preserve">
+    <value>Creating recovery data</value>
+  </data>
+  <data name="已取消生成恢复记录" xml:space="preserve">
+    <value>Recovery data was cancelled</value>
+  </data>
+  <data name="恢复记录没有生成：{0}" xml:space="preserve">
+    <value>Recovery data was not created: {0}</value>
+  </data>
+  <data name="已取消" xml:space="preserve">
+    <value>Cancelled</value>
+  </data>
+  <data name="移除" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="移除密码 {0}" xml:space="preserve">
+    <value>Remove password {0}</value>
+  </data>
+  <data name="密码 {0}" xml:space="preserve">
+    <value>Password {0}</value>
+  </data>
+  <data name="确认密码 {0}" xml:space="preserve">
+    <value>Confirm password {0}</value>
+  </data>
+  <data name="至少 {0} 个字符" xml:space="preserve">
+    <value>At least {0} characters</value>
+  </data>
+  <data name="和第 {0} 个密码相同" xml:space="preserve">
+    <value>Same as password {0}</value>
+  </data>
+  <data name="再输入一次" xml:space="preserve">
+    <value>Type it again to confirm</value>
+  </data>
+  <data name="两次输入不一致" xml:space="preserve">
+    <value>The two entries differ</value>
+  </data>
+  <data name="输入一个密码" xml:space="preserve">
+    <value>Enter a password</value>
+  </data>
+  <data name="{0}_已还原" xml:space="preserve">
+    <value>{0}_restored</value>
+  </data>
+  <data name="正在读取…" xml:space="preserve">
+    <value>Reading…</value>
+  </data>
+  <data name="{0} · 1 个密码" xml:space="preserve">
+    <value>{0} · 1 password</value>
+  </data>
+  <data name="{0} · {1} 个密码" xml:space="preserve">
+    <value>{0} · {1} passwords</value>
+  </data>
+  <data name="文件有损坏，解密时会用恢复记录修复" xml:space="preserve">
+    <value>Damaged. Decrypting repairs it from the recovery data.</value>
+  </data>
+  <data name="选择还原位置" xml:space="preserve">
+    <value>Choose where to restore</value>
+  </data>
+  <data name="2Password_已还原" xml:space="preserve">
+    <value>2Password_restored</value>
+  </data>
+  <data name="先选择还原位置。" xml:space="preserve">
+    <value>Choose where to restore first.</value>
+  </data>
+  <data name="选择 PAR2 恢复记录" xml:space="preserve">
+    <value>Choose PAR2 recovery data</value>
+  </data>
+  <data name="PAR2 恢复记录 (*.par2)|*.par2" xml:space="preserve">
+    <value>PAR2 recovery data (*.par2)|*.par2</value>
+  </data>
+  <data name="检查" xml:space="preserve">
+    <value>Check</value>
+  </data>
+  <data name="已修复" xml:space="preserve">
+    <value>Repaired</value>
+  </data>
+  <data name="没有损坏" xml:space="preserve">
+    <value>No damage found</value>
+  </data>
+  <data name="有损坏，可以修复" xml:space="preserve">
+    <value>Damaged, can be repaired</value>
+  </data>
+  <data name="无法修复" xml:space="preserve">
+    <value>Cannot be repaired</value>
+  </data>
+  <data name="修复" xml:space="preserve">
+    <value>Repair</value>
+  </data>
+  <data name="重新检查" xml:space="preserve">
+    <value>Check again</value>
+  </data>
+  <data name="正在加密" xml:space="preserve">
+    <value>Encrypting</value>
+  </data>
+  <data name="正在解密" xml:space="preserve">
+    <value>Decrypting</value>
+  </data>
+  <data name="正在检查" xml:space="preserve">
+    <value>Checking</value>
+  </data>
+  <data name="正在修复" xml:space="preserve">
+    <value>Repairing</value>
+  </data>
+  <data name="正在取消" xml:space="preserve">
+    <value>Cancelling</value>
+  </data>
+  <data name="{0} 项" xml:space="preserve">
+    <value>{0} items</value>
+  </data>
+  <data name="发现损坏，正在检查" xml:space="preserve">
+    <value>Damage found, checking</value>
+  </data>
+  <data name="发现损坏，正在修复" xml:space="preserve">
+    <value>Damage found, repairing</value>
+  </data>
+  <data name="正在检查文件" xml:space="preserve">
+    <value>Checking files</value>
+  </data>
+  <data name="正在设置密码" xml:space="preserve">
+    <value>Setting up passwords</value>
+  </data>
+  <data name="正在验证密码" xml:space="preserve">
+    <value>Checking password</value>
+  </data>
+  <data name="正在生成 EXE" xml:space="preserve">
+    <value>Building the EXE</value>
+  </data>
+  <data name="即将完成" xml:space="preserve">
+    <value>Finishing</value>
+  </data>
+  <data name="加密完成" xml:space="preserve">
+    <value>Encrypted</value>
+  </data>
+  <data name="恢复记录 · 1 个文件" xml:space="preserve">
+    <value>Recovery data · 1 file</value>
+  </data>
+  <data name="恢复记录 · {0} 个文件" xml:space="preserve">
+    <value>Recovery data · {0} files</value>
+  </data>
+  <data name="这些文件放在同一个文件夹里" xml:space="preserve">
+    <value>Keep these files in the same folder</value>
+  </data>
+  <data name="在文件夹中显示" xml:space="preserve">
+    <value>Show in folder</value>
+  </data>
+  <data name="完成" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="解密完成" xml:space="preserve">
+    <value>Decrypted</value>
+  </data>
+  <data name="打开文件夹" xml:space="preserve">
+    <value>Open folder</value>
+  </data>
+  <data name="关闭" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="未能读取此版本内的第三方许可文件。" xml:space="preserve">
+    <value>The license file bundled with this version could not be read.</value>
+  </data>
+  <data name="导出 PAR2 源码" xml:space="preserve">
+    <value>Export PAR2 source</value>
+  </data>
+  <data name="源代码压缩包 (*.tar.xz)|*.tar.xz" xml:space="preserve">
+    <value>Source archive (*.tar.xz)|*.tar.xz</value>
+  </data>
+  <data name="已导出：{0}" xml:space="preserve">
+    <value>Exported: {0}</value>
+  </data>
+  <data name="1 个文件 · {0}" xml:space="preserve">
+    <value>1 file · {0}</value>
+  </data>
+  <data name="{0} 个文件 · {1}" xml:space="preserve">
+    <value>{0} files · {1}</value>
+  </data>
+  <data name="没有可用的名称，请手动选择位置。" xml:space="preserve">
+    <value>No free name is left. Choose a location yourself.</value>
+  </data>
   <data name="找不到文件：{0}" xml:space="preserve">
     <value>File not found: {0}</value>
   </data>
-  <data name="找不到所需文件夹，请检查所选路径。" xml:space="preserve">
-    <value>A required folder was not found. Check the selected paths.</value>
+  <data name="找不到文件夹。" xml:space="preserve">
+    <value>Folder not found.</value>
+  </data>
+  <data name="没有权限访问这个位置。" xml:space="preserve">
+    <value>Access to this location is denied.</value>
+  </data>
+  <data name="路径太长，换一个短一些的位置。" xml:space="preserve">
+    <value>The path is too long. Choose a shorter location.</value>
+  </data>
+  <data name="内存不足。关掉一些程序再试。" xml:space="preserve">
+    <value>Not enough memory. Close some programs and try again.</value>
+  </data>
+  <data name="密码不正确，或加密包已损坏。" xml:space="preserve">
+    <value>Wrong password, or the package is damaged.</value>
   </data>
   <data name="输入不是有效的 UTF-8。" xml:space="preserve">
     <value>Input is not valid UTF-8.</value>
+  </data>
+  <data name="返回" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="更多" xml:space="preserve">
+    <value>More</value>
+  </data>
+  <data name="最小化" xml:space="preserve">
+    <value>Minimize</value>
+  </data>
+  <data name="选择文件" xml:space="preserve">
+    <value>Choose file</value>
+  </data>
+  <data name="选择文件夹" xml:space="preserve">
+    <value>Choose folder</value>
+  </data>
+  <data name="密码" xml:space="preserve">
+    <value>Passwords</value>
+  </data>
+  <data name="任意一个都能解开" xml:space="preserve">
+    <value>Any one of them opens it</value>
+  </data>
+  <data name="+ 添加密码" xml:space="preserve">
+    <value>+ Add password</value>
+  </data>
+  <data name="大写锁定已打开" xml:space="preserve">
+    <value>Caps Lock is on</value>
+  </data>
+  <data name="输入密码" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="再输一次" xml:space="preserve">
+    <value>Confirm</value>
+  </data>
+  <data name="保存到" xml:space="preserve">
+    <value>Save to</value>
+  </data>
+  <data name="更改" xml:space="preserve">
+    <value>Change</value>
+  </data>
+  <data name="选项" xml:space="preserve">
+    <value>Options</value>
+  </data>
+  <data name="压缩" xml:space="preserve">
+    <value>Compression</value>
+  </data>
+  <data name="不压缩" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="视频、照片这类已经压缩过的文件，选这个更快" xml:space="preserve">
+    <value>Faster for videos, photos and other files that are already compressed</value>
+  </data>
+  <data name="输出" xml:space="preserve">
+    <value>Output</value>
+  </data>
+  <data name="自动" xml:space="preserve">
+    <value>Auto</value>
+  </data>
+  <data name="装得下就生成单个 EXE，太大时拆成 EXE 和 .2pw 两个文件" xml:space="preserve">
+    <value>A single EXE when it fits; EXE + .2pw when it is too large</value>
+  </data>
+  <data name="单个 EXE" xml:space="preserve">
+    <value>Single EXE</value>
+  </data>
+  <data name="单个 EXE 最大 4 GB" xml:space="preserve">
+    <value>A single EXE holds up to 4 GB</value>
+  </data>
+  <data name="两个文件要放在同一个文件夹里" xml:space="preserve">
+    <value>Keep both files in the same folder</value>
+  </data>
+  <data name="恢复记录" xml:space="preserve">
+    <value>Recovery</value>
+  </data>
+  <data name="额外生成 PAR2 文件，加密包损坏时用来修复" xml:space="preserve">
+    <value>Adds PAR2 files that can repair a damaged package</value>
+  </data>
+  <data name="无" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="加密" xml:space="preserve">
+    <value>Encrypt</value>
+  </data>
+  <data name="重新读取" xml:space="preserve">
+    <value>Reload</value>
+  </data>
+  <data name="密码不正确" xml:space="preserve">
+    <value>Wrong password</value>
+  </data>
+  <data name="解密" xml:space="preserve">
+    <value>Decrypt</value>
+  </data>
+  <data name="还原到" xml:space="preserve">
+    <value>Restore to</value>
+  </data>
+  <data name="先检查并修复，再解密" xml:space="preserve">
+    <value>Check and repair before decrypting</value>
+  </data>
+  <data name="PAR2 恢复记录" xml:space="preserve">
+    <value>PAR2 recovery data</value>
+  </data>
+  <data name="进度" xml:space="preserve">
+    <value>Progress</value>
+  </data>
+  <data name="取消" xml:space="preserve">
+    <value>Cancel</value>
   </data>
 </root>

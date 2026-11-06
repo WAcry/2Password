@@ -31,10 +31,11 @@ public partial class App : Application
             try { embedded = RecoveryService.HasRecoveryFiles(processPath); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
+        Theme.Initialize(e.Args);
         string? external = null;
         for (var index = 0; index < e.Args.Length; index++)
         {
-            if (e.Args[index] is "--stub" or "--language") { index++; continue; }
+            if (e.Args[index] is "--stub" or "--language" or "--theme") { index++; continue; }
             if (!e.Args[index].StartsWith("--", StringComparison.Ordinal)) { external = e.Args[index]; break; }
         }
         MainWindow = new MainWindow(embedded ? processPath : null, stubOverride, embedded ? null : external);
@@ -205,7 +206,7 @@ internal static class CommandLine
     private static Dictionary<string, string?> Parse(string[] args)
     {
         HashSet<string> flags = ["--inspect-self", "--extract-self", "--password-stdin", "--passwords-stdin", "--verify-first", "--help", "-h"];
-        HashSet<string> values = ["--inspect", "--extract", "--create", "--output", "--report", "--compression", "--layout", "--recovery-percent", "--stub", "--verify-recovery", "--repair-recovery", "--export-recovery-source", "--language"];
+        HashSet<string> values = ["--inspect", "--extract", "--create", "--output", "--report", "--compression", "--layout", "--recovery-percent", "--stub", "--verify-recovery", "--repair-recovery", "--export-recovery-source", "--language", "--theme"];
         var result = new Dictionary<string, string?>(StringComparer.Ordinal);
         for (var i = 0; i < args.Length; i++)
         {

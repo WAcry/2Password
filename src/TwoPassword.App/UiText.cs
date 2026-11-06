@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Media;
 using SharedText = TwoPassword.Localization.Text;
 
 namespace TwoPassword.App;
@@ -16,13 +17,25 @@ internal static class UiText
     private static readonly string PreferencePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "2Password", "language.json");
 
-    internal static string Language => SharedText.Language;
+    private static string _language = "en";
+
+    internal static string Language => _language;
 
     internal static string L(string key, params object?[] args)
     {
-        var template = Catalog.GetString(key, CultureInfo.GetCultureInfo(Language));
+        var culture = CultureInfo.GetCultureInfo(_language);
+        var template = Catalog.GetString(key, culture);
         if (template is null) return SharedText.Get(key, args);
-        return args.Length == 0 ? template : string.Format(CultureInfo.CurrentCulture, template, args);
+        return args.Length == 0 ? template : string.Format(culture, template, args);
+    }
+
+    /// <summary>
+    /// Re-applies the chosen culture to the current execution context. Operations started through UI Automation
+    /// (screen readers, test drivers) run in a context that carries the automation client's culture.
+    /// </summary>
+    internal static void Pin()
+    {
+        if (SharedText.Language != _language) SharedText.UseLanguage(_language);
     }
 
     internal static void Initialize(string[] arguments)
@@ -39,19 +52,23 @@ internal static class UiText
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
         for (var index = 0; index + 1 < arguments.Length; index++)
             if (arguments[index] == "--language" && arguments[index + 1] is "en" or "zh-CN") language = arguments[index + 1];
-        SharedText.UseLanguage(language);
+        UseLanguage(language);
     }
 
-    internal static void UseLanguage(string language) => SharedText.UseLanguage(language);
+    internal static void UseLanguage(string language)
+    {
+        _language = language.StartsWith("zh", StringComparison.OrdinalIgnoreCase) ? "zh-CN" : "en";
+        SharedText.UseLanguage(_language);
+    }
 
     internal static string DescribeException(Exception error) => error switch
     {
         FileNotFoundException missing => L("找不到文件：{0}", missing.FileName ?? ""),
-        DirectoryNotFoundException => L("找不到所需文件夹，请检查所选路径。"),
-        UnauthorizedAccessException => L("没有访问权限。请检查文件权限，或选择你有权限读写的位置。"),
-        PathTooLongException => L("此路径超过 Windows 或目标文件系统的限制。请使用更短的还原位置。"),
-        OutOfMemoryException => L("可用内存不足，请关闭其他占用内存的程序后重试。"),
-        CryptographicException => L("密码不正确，或加密包已损坏。请确认大小写、空格及文件完整性。"),
+        DirectoryNotFoundException => L("找不到文件夹。"),
+        UnauthorizedAccessException => L("没有权限访问这个位置。"),
+        PathTooLongException => L("路径太长，换一个短一些的位置。"),
+        OutOfMemoryException => L("内存不足。关掉一些程序再试。"),
+        CryptographicException => L("密码不正确，或加密包已损坏。"),
         DecoderFallbackException => L("输入不是有效的 UTF-8。"),
         JsonException => L("Standard input must contain a JSON password array."),
         OperationCanceledException => L("已取消"),
@@ -61,6 +78,8 @@ internal static class UiText
     internal static void Apply(ResourceDictionary dictionary)
     {
         foreach (var pair in UiXamlKeys.Values) dictionary[pair.Key] = L(pair.Value);
+        // Microsoft YaHei UI has no semibold face; leading with it keeps mixed Chinese and Latin headings at one weight.
+        Application.Current.Resources["UiFont"] = new FontFamily(Language == "zh-CN" ? "Microsoft YaHei UI, Segoe UI" : "Segoe UI, Microsoft YaHei UI");
     }
 
     internal static void SaveLanguage()

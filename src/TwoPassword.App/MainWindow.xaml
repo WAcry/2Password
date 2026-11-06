@@ -2,452 +2,250 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="2Password" Width="1160" Height="850" MinWidth="880" MinHeight="640"
+        xmlns:local="clr-namespace:TwoPassword.App"
+        Title="2Password" Width="680" Height="620" MinWidth="520" MinHeight="500"
         WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
-        Background="#10151F" Foreground="#EDF2F7" FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="13"
-        UseLayoutRounding="True" SnapsToDevicePixels="True" Closing="Window_Closing"
-        Loaded="Window_Loaded">
+        Background="{DynamicResource Bg}" Foreground="{DynamicResource Ink}"
+        FontFamily="{DynamicResource UiFont}" FontSize="13"
+        UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display"
+        AllowDrop="True" DragEnter="Window_DragEnter" DragOver="Window_DragOver" DragLeave="Window_DragLeave" Drop="Window_Drop"
+        PreviewKeyDown="Window_PreviewKeyDown" PreviewKeyUp="Window_PreviewKeyUp" PreviewTextInput="Window_PreviewTextInput"
+        Activated="Window_Activated" StateChanged="Window_StateChanged" SourceInitialized="Window_SourceInitialized"
+        Loaded="Window_Loaded" Closing="Window_Closing">
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="7" CornerRadius="12" GlassFrameThickness="0"/>
+        <shell:WindowChrome CaptionHeight="40" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
-    <Window.Resources>
-        <SolidColorBrush x:Key="Accent" Color="#6BE1C7"/>
-        <SolidColorBrush x:Key="Muted" Color="#94A3BA"/>
-        <SolidColorBrush x:Key="Card" Color="#18212D"/>
-        <Style TargetType="TextBlock"><Setter Property="TextOptions.TextFormattingMode" Value="Display"/></Style>
-        <Style TargetType="Button">
-            <Setter Property="Background" Value="#253244"/><Setter Property="Foreground" Value="#E7EEF7"/>
-            <Setter Property="BorderBrush" Value="#344459"/><Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="17,10"/><Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontWeight" Value="Medium"/><Setter Property="MinHeight" Value="40"/>
-            <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-                <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                        BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" Padding="{TemplateBinding Padding}">
-                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
-                </Border>
-                <ControlTemplate.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Opacity" Value=".82"/></Trigger>
-                    <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Opacity" Value=".64"/></Trigger>
-                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Chrome" Property="BorderBrush" Value="#96F6E0"/><Setter TargetName="Chrome" Property="BorderThickness" Value="2"/></Trigger>
-                    <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Chrome" Property="Opacity" Value=".38"/></Trigger>
-                </ControlTemplate.Triggers>
-            </ControlTemplate></Setter.Value></Setter>
-        </Style>
-        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="#6BE1C7"/><Setter Property="Foreground" Value="#0D2521"/>
-            <Setter Property="BorderBrush" Value="#6BE1C7"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Padding" Value="24,13"/>
-        </Style>
-        <Style x:Key="QuietButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="Foreground" Value="#A9B8CC"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="10,6"/>
-        </Style>
-        <Style x:Key="WindowButton" TargetType="Button" BasedOn="{StaticResource QuietButton}">
-            <Setter Property="Width" Value="46"/><Setter Property="Height" Value="42"/><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="11"/>
-        </Style>
-        <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#111925"/><Setter Property="Foreground" Value="#ECF2F9"/>
-            <Setter Property="BorderBrush" Value="#344257"/><Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="12,10"/><Setter Property="CaretBrush" Value="#6BE1C7"/>
-            <Setter Property="SelectionBrush" Value="#32766D"/><Setter Property="MinHeight" Value="42"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox">
-                <Border x:Name="InputBorder" CornerRadius="7" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
-                    <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
-                </Border>
-                <ControlTemplate.Triggers>
-                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="InputBorder" Property="BorderBrush" Value="#6BE1C7"/></Trigger>
-                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value=".45"/></Trigger>
-                </ControlTemplate.Triggers>
-            </ControlTemplate></Setter.Value></Setter>
-        </Style>
-        <Style TargetType="PasswordBox">
-            <Setter Property="Background" Value="#111925"/><Setter Property="Foreground" Value="#EDF2F7"/>
-            <Setter Property="BorderBrush" Value="#344257"/><Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="12,10"/><Setter Property="CaretBrush" Value="#6BE1C7"/>
-            <Setter Property="SelectionBrush" Value="#32766D"/><Setter Property="MinHeight" Value="42"/>
-            <Setter Property="MaxLength" Value="1024"/>
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="PasswordBox">
-                <Border x:Name="PasswordBorder" CornerRadius="7" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
-                    <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
-                </Border>
-                <ControlTemplate.Triggers>
-                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="PasswordBorder" Property="BorderBrush" Value="#6BE1C7"/></Trigger>
-                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value=".45"/></Trigger>
-                </ControlTemplate.Triggers>
-            </ControlTemplate></Setter.Value></Setter>
-        </Style>
-        <Style TargetType="RadioButton">
-            <Setter Property="Foreground" Value="#E7EEF7"/><Setter Property="Cursor" Value="Hand"/><Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton">
-                <Border x:Name="RadioBorder" Background="#121B28" BorderBrush="#344257" BorderThickness="1" CornerRadius="8" Padding="14,11">
-                    <DockPanel><Border x:Name="RadioMark" DockPanel.Dock="Left" Width="16" Height="16" CornerRadius="8" BorderBrush="#8192AA" BorderThickness="1.5" Margin="0,0,10,0">
-                        <Ellipse x:Name="RadioDot" Fill="#6BE1C7" Margin="3" Visibility="Hidden"/>
-                    </Border><ContentPresenter VerticalAlignment="Center"/></DockPanel>
-                </Border>
-                <ControlTemplate.Triggers>
-                    <Trigger Property="IsChecked" Value="True"><Setter TargetName="RadioDot" Property="Visibility" Value="Visible"/><Setter TargetName="RadioBorder" Property="BorderBrush" Value="#449D8D"/><Setter TargetName="RadioMark" Property="BorderBrush" Value="#6BE1C7"/><Setter TargetName="RadioBorder" Property="Background" Value="#172D30"/></Trigger>
-                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="RadioBorder" Property="BorderBrush" Value="#9DF6E1"/></Trigger>
-                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value=".4"/></Trigger>
-                </ControlTemplate.Triggers>
-            </ControlTemplate></Setter.Value></Setter>
-        </Style>
-        <Style x:Key="NavButton" TargetType="RadioButton" BasedOn="{StaticResource {x:Type RadioButton}}">
-            <Setter Property="Margin" Value="0,0,0,8"/>
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton">
-                <Border x:Name="NavBorder" Background="Transparent" CornerRadius="9" Padding="16,14" BorderThickness="1" BorderBrush="Transparent">
-                    <ContentPresenter/>
-                </Border>
-                <ControlTemplate.Triggers>
-                    <Trigger Property="IsChecked" Value="True"><Setter TargetName="NavBorder" Property="Background" Value="#1C3536"/><Setter Property="Foreground" Value="#86E9D2"/><Setter TargetName="NavBorder" Property="BorderBrush" Value="#294C48"/></Trigger>
-                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="NavBorder" Property="Opacity" Value=".8"/></Trigger>
-                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="NavBorder" Property="BorderBrush" Value="#6BE1C7"/></Trigger>
-                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value=".4"/></Trigger>
-                </ControlTemplate.Triggers>
-            </ControlTemplate></Setter.Value></Setter>
-        </Style>
-        <Style TargetType="ComboBoxItem">
-            <Setter Property="Foreground" Value="#DFE9F4"/><Setter Property="Padding" Value="13,11"/>
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem">
-                <Border x:Name="Choice" Background="Transparent" Padding="{TemplateBinding Padding}" CornerRadius="5"><ContentPresenter/></Border>
-                <ControlTemplate.Triggers>
-                    <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Choice" Property="Background" Value="#2B4055"/></Trigger>
-                    <Trigger Property="IsSelected" Value="True"><Setter Property="Foreground" Value="#8AEBD5"/></Trigger>
-                </ControlTemplate.Triggers>
-            </ControlTemplate></Setter.Value></Setter>
-        </Style>
-        <Style TargetType="ComboBox">
-            <Setter Property="Background" Value="#111925"/><Setter Property="Foreground" Value="#E7EEF7"/>
-            <Setter Property="BorderBrush" Value="#344257"/><Setter Property="MinHeight" Value="43"/>
-            <Setter Property="Padding" Value="12,9"/><Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBox">
-                <Grid>
-                    <Border x:Name="ComboBorder" CornerRadius="7" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"/>
-                    <ToggleButton Focusable="False" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" ClickMode="Press">
-                        <ToggleButton.Template><ControlTemplate TargetType="ToggleButton"><Border Background="Transparent"/></ControlTemplate></ToggleButton.Template>
-                    </ToggleButton>
-                    <Grid IsHitTestVisible="False" Margin="{TemplateBinding Padding}"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="22"/></Grid.ColumnDefinitions>
-                        <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="1" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="#8499B2" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                    </Grid>
-                    <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" PopupAnimation="Fade" Focusable="False">
-                        <Border Background="#1C2939" BorderBrush="#3B4F68" BorderThickness="1" CornerRadius="8" Padding="4" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" Margin="0,4,0,0">
-                            <ScrollViewer MaxHeight="280" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"><ItemsPresenter/></ScrollViewer>
-                        </Border>
-                    </Popup>
-                </Grid>
-                <ControlTemplate.Triggers>
-                    <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="ComboBorder" Property="BorderBrush" Value="#6BE1C7"/></Trigger>
-                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value=".45"/></Trigger>
-                </ControlTemplate.Triggers>
-            </ControlTemplate></Setter.Value></Setter>
-        </Style>
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#A7BDD0"/><Setter Property="FontSize" Value="11"/><Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox">
-                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="25"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <Border x:Name="CheckOutline" Width="17" Height="17" CornerRadius="4" BorderBrush="#547087" BorderThickness="1" Background="#111E2B" VerticalAlignment="Top" Margin="0,1,0,0">
-                        <Path x:Name="CheckMark" Data="M 3,8 L 6,11 L 12,4" Stroke="#6BE1C7" StrokeThickness="2" Visibility="Collapsed"/>
-                    </Border><ContentPresenter Grid.Column="1"/>
-                </Grid>
-                <ControlTemplate.Triggers>
-                    <Trigger Property="IsChecked" Value="True"><Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/><Setter TargetName="CheckOutline" Property="BorderBrush" Value="#6BE1C7"/></Trigger>
-                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="CheckOutline" Property="BorderBrush" Value="#A1F1DD"/></Trigger>
-                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value=".45"/></Trigger>
-                </ControlTemplate.Triggers>
-            </ControlTemplate></Setter.Value></Setter>
-        </Style>
-        <Style x:Key="CardBorder" TargetType="Border">
-            <Setter Property="Background" Value="#18212D"/><Setter Property="BorderBrush" Value="#273448"/>
-            <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="12"/>
-            <Setter Property="Padding" Value="22"/><Setter Property="Margin" Value="0,0,0,16"/>
-        </Style>
-        <Style x:Key="StepNumber" TargetType="Border">
-            <Setter Property="Width" Value="28"/><Setter Property="Height" Value="28"/><Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Background" Value="#283446"/><Setter Property="Margin" Value="0,0,11,0"/>
-        </Style>
-        <Style TargetType="ProgressBar">
-            <Setter Property="Height" Value="5"/><Setter Property="Background" Value="#2A3749"/><Setter Property="Foreground" Value="#6BE1C7"/>
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ProgressBar">
-                <Grid x:Name="PART_Track" ClipToBounds="True"><Border CornerRadius="2.5" Background="{TemplateBinding Background}"/>
-                    <Border x:Name="PART_Indicator" CornerRadius="2.5" Background="{TemplateBinding Foreground}" HorizontalAlignment="Left"/>
-                </Grid>
-            </ControlTemplate></Setter.Value></Setter>
-        </Style>
-        <Style x:Key="ScrollThumb" TargetType="Thumb">
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Thumb">
-                <Border x:Name="ThumbBorder" Background="#3B4C64" CornerRadius="3" Margin="2,0"/>
-                <ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ThumbBorder" Property="Background" Value="#617792"/></Trigger></ControlTemplate.Triggers>
-            </ControlTemplate></Setter.Value></Setter>
-        </Style>
-        <Style x:Key="ScrollPage" TargetType="RepeatButton">
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate></Setter.Value></Setter>
-        </Style>
-        <Style TargetType="ScrollBar">
-            <Setter Property="Width" Value="10"/><Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
-                <Track x:Name="PART_Track" IsDirectionReversed="True" Orientation="Vertical" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" Value="{TemplateBinding Value}" ViewportSize="{TemplateBinding ViewportSize}">
-                    <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Style="{StaticResource ScrollPage}" Focusable="False"/></Track.DecreaseRepeatButton>
-                    <Track.Thumb><Thumb Style="{StaticResource ScrollThumb}"/></Track.Thumb>
-                    <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Style="{StaticResource ScrollPage}" Focusable="False"/></Track.IncreaseRepeatButton>
-                </Track>
-            </ControlTemplate></Setter.Value></Setter>
-        </Style>
-        <Style TargetType="ToolTip"><Setter Property="Background" Value="#243145"/><Setter Property="Foreground" Value="#E7EEF7"/><Setter Property="BorderBrush" Value="#3A4B65"/><Setter Property="Padding" Value="10,7"/></Style>
-    </Window.Resources>
-    <Border BorderThickness="1" BorderBrush="#354155">
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+
+        <!-- Title bar -->
         <Grid>
-            <Grid.RowDefinitions><RowDefinition Height="48"/><RowDefinition Height="*"/><RowDefinition Height="110"/></Grid.RowDefinitions>
-            <Grid.ColumnDefinitions><ColumnDefinition x:Name="SidebarColumn" Width="218"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <Border Grid.RowSpan="3" Background="#0C121C" BorderBrush="#253043" BorderThickness="0,0,1,0"/>
-            <Grid Grid.ColumnSpan="2" Background="Transparent" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                <StackPanel Orientation="Horizontal" Margin="21,0,0,0" VerticalAlignment="Center">
-                    <Ellipse Fill="#6BE1C7" Width="7" Height="7" Margin="0,0,9,0"/>
-                    <TextBlock Text="2Password" FontFamily="Segoe UI" FontSize="12" Foreground="#AAB7CC"/>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button Style="{StaticResource WindowButton}" Content="&#xE921;" Click="Minimize_Click" ToolTip="{DynamicResource Ui.001}" AutomationProperties.Name="{DynamicResource Ui.001}"/>
-                    <Button x:Name="MaximizeButton" Style="{StaticResource WindowButton}" Content="&#xE922;" Click="Maximize_Click" ToolTip="{DynamicResource Ui.002}" AutomationProperties.Name="{DynamicResource Ui.002}"/>
-                    <Button Style="{StaticResource WindowButton}" Content="&#xE8BB;" Click="Close_Click" ToolTip="{DynamicResource Ui.003}" AutomationProperties.Name="{DynamicResource Ui.003}"/>
-                </StackPanel>
-                <ComboBox x:Name="LanguageSelector" Width="112" Height="31" MinHeight="31" Padding="10,5" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,151,0" SelectionChanged="Language_SelectionChanged" AutomationProperties.AutomationId="LanguageSelector" AutomationProperties.Name="{DynamicResource Ui.004}">
-                    <ComboBoxItem Content="中文" Tag="zh-CN"/>
-                    <ComboBoxItem Content="English" Tag="en"/>
-                </ComboBox>
-            </Grid>
-            <Grid x:Name="SidebarContent" Grid.Row="1" Margin="19,26,19,0">
-                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                <StackPanel Margin="6,0,0,40">
-                    <Border Width="46" Height="46" CornerRadius="13" Background="#6BE1C7" HorizontalAlignment="Left" Margin="0,0,0,16">
-                        <Grid><Path Stroke="#11302A" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="M 15,22 L 15,18 C 15,8 31,8 31,18 L 31,22 M 13,22 L 33,22 L 33,35 L 13,35 Z M 23,27 L 23,31" HorizontalAlignment="Center" VerticalAlignment="Center" Width="46" Height="46"/></Grid>
-                    </Border>
-                    <TextBlock Text="2Password" FontFamily="Segoe UI" FontSize="23" FontWeight="SemiBold" Foreground="#F3F6FA"/>
-                    <TextBlock Text="{DynamicResource Ui.005}" FontSize="11" Foreground="#7E91AB" Margin="0,8,0,0"/>
-                </StackPanel>
-                <StackPanel x:Name="Navigation" Grid.Row="1">
-                    <TextBlock Text="{DynamicResource Ui.006}" Foreground="#657992" FontSize="10" Margin="16,0,0,14"/>
-                    <RadioButton x:Name="CreateNav" AutomationProperties.AutomationId="CreateNav" AutomationProperties.Name="{DynamicResource Ui.007}" GroupName="Navigation" Style="{StaticResource NavButton}" IsChecked="True" Checked="Navigation_Checked" Click="Navigation_Click">
-                        <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72E;" Margin="0,1,12,0" FontSize="16"/><TextBlock Text="{DynamicResource Ui.007}" FontWeight="SemiBold"/></StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="ExtractNav" AutomationProperties.AutomationId="ExtractNav" AutomationProperties.Name="{DynamicResource Ui.008}" GroupName="Navigation" Style="{StaticResource NavButton}" Checked="Navigation_Checked" Click="Navigation_Click">
-                        <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE785;" Margin="0,1,12,0" FontSize="16"/><TextBlock Text="{DynamicResource Ui.008}" FontWeight="SemiBold"/></StackPanel>
-                    </RadioButton>
-                </StackPanel>
-                <Border Grid.Row="3" Background="#131E2C" CornerRadius="10" Padding="16" Margin="0,24,0,24">
-                    <StackPanel>
-                        <TextBlock Text="{DynamicResource Ui.009}" Foreground="#BFCDE0" FontSize="12" FontWeight="SemiBold"/>
-                        <TextBlock Text="{DynamicResource Ui.010}" TextWrapping="Wrap" Foreground="#768AA5" FontSize="11" LineHeight="20" Margin="0,9,0,0"/>
-                        <TextBlock Text="AES-256-GCM  ·  Argon2id" Foreground="#5FAE9E" FontFamily="Segoe UI" FontSize="10" Margin="0,15,0,0"/>
-                    </StackPanel>
-                </Border>
-            </Grid>
-            <StackPanel Grid.Row="2" Margin="26,0,20,21" VerticalAlignment="Bottom">
-                <Button Content="{DynamicResource Ui.011}" Style="{StaticResource QuietButton}" Click="ShowNotices_Click" Padding="0,5" HorizontalAlignment="Left" FontSize="10" Foreground="#738AA5" AutomationProperties.AutomationId="ThirdPartyNotices"/>
-                <TextBlock x:Name="VersionLabel" Text="{DynamicResource Ui.012}" Foreground="#5E738E" FontFamily="Segoe UI" FontSize="10" Margin="0,8,0,0"/>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="BackButton" Style="{StaticResource BarButton}" Content="&#xE72B;" Margin="6,0,0,0" Visibility="Collapsed" Click="Back_Click"
+                        ToolTip="{DynamicResource Ui.Back}" AutomationProperties.Name="{DynamicResource Ui.Back}" AutomationProperties.AutomationId="Back"/>
+                <TextBlock x:Name="WindowCaption" Text="2Password" Foreground="{DynamicResource Ink3}" FontSize="12" VerticalAlignment="Center" Margin="16,0,0,0"/>
             </StackPanel>
-            <ScrollViewer x:Name="ContentScroll" Grid.Row="1" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="34,14,34,22">
-                <Grid>
-                    <StackPanel x:Name="CreatePanel">
-                        <Grid Margin="0,0,0,27">
-                            <StackPanel Margin="0,0,75,0">
-                                <TextBlock Text="{DynamicResource Ui.013}" FontFamily="Segoe UI" Foreground="#6BE1C7" FontSize="10" FontWeight="SemiBold"/>
-                                <TextBlock Text="{DynamicResource Ui.014}" FontSize="27" FontWeight="SemiBold" Margin="0,10,0,9" TextWrapping="Wrap"/>
-                                <TextBlock Text="{DynamicResource Ui.015}" Foreground="#94A3BA" TextWrapping="Wrap" FontSize="12"/>
-                            </StackPanel>
-                            <Border HorizontalAlignment="Right" VerticalAlignment="Center" Width="54" Height="54" Background="#1A302F" CornerRadius="16">
-                                <TextBlock Text="&#xE72E;" FontFamily="Segoe MDL2 Assets" Foreground="#6BE1C7" FontSize="25" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                        </Grid>
-                        <Border Background="#13272B" CornerRadius="8" Padding="14,10" Margin="0,0,0,20"><TextBlock Text="{DynamicResource Ui.016}" Foreground="#8BC8B7" FontSize="11" TextWrapping="Wrap"/></Border>
-                        <Border x:Name="CreatedFilesCard" Background="#162F2B" BorderBrush="#326556" BorderThickness="1" CornerRadius="12" Padding="21" Margin="0,0,0,18" Visibility="Collapsed">
-                            <StackPanel>
-                                <TextBlock x:Name="CreatedFilesTitle" Text="{DynamicResource Ui.017}" FontWeight="SemiBold" Foreground="#96E8CA" FontSize="15"/>
-                                <TextBlock x:Name="CreatedFilesNote" Foreground="#A1C6B9" TextWrapping="Wrap" FontSize="11" LineHeight="20" Margin="0,9,0,12"/>
-                                <ItemsControl x:Name="CreatedFilesList"><ItemsControl.ItemTemplate><DataTemplate>
-                                    <TextBlock Text="{Binding}" ToolTip="{Binding}" TextWrapping="Wrap" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="11" Foreground="#C4DDCF" Margin="0,4,0,0"/>
-                                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-                            </StackPanel>
-                        </Border>
-                        <Border x:Name="SourceCard" Style="{StaticResource CardBorder}" AllowDrop="True" DragOver="Source_DragOver" Drop="Source_Drop">
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,18"><Border Style="{StaticResource StepNumber}"><TextBlock Text="01" HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Segoe UI" Foreground="#A3B7D0" FontSize="11"/></Border><TextBlock Text="{DynamicResource Ui.018}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/></StackPanel>
-                                <Border Background="#131E2C" BorderBrush="#30445B" BorderThickness="1" CornerRadius="9" Padding="20">
-                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <Border Width="38" Height="42" Background="#24364B" CornerRadius="8" VerticalAlignment="Top"><TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" Foreground="#86BCE0" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-                                        <StackPanel Grid.Column="1"><TextBlock x:Name="SourceName" Text="{DynamicResource Ui.019}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,0,0,7"/>
-                                            <TextBlock x:Name="SourcePathLabel" Text="{DynamicResource Ui.020}" Foreground="#8095B0" FontSize="11" TextWrapping="Wrap" MaxHeight="45"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-                                                <Button Content="{DynamicResource Ui.021}" AutomationProperties.AutomationId="ChooseFile" Click="ChooseFile_Click" Padding="17,8" MinHeight="36" Margin="0,0,9,0"/>
-                                                <Button Content="{DynamicResource Ui.022}" AutomationProperties.AutomationId="ChooseFolder" Click="ChooseFolder_Click" Padding="17,8" MinHeight="36"/>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource CardBorder}">
-                            <StackPanel>
-                                <Grid Margin="0,0,0,9">
-                                    <StackPanel Orientation="Horizontal"><Border Style="{StaticResource StepNumber}"><TextBlock Text="02" HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Segoe UI" Foreground="#A3B7D0" FontSize="11"/></Border><TextBlock Text="{DynamicResource Ui.023}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/></StackPanel>
-                                    <Button x:Name="AddPasswordButton" Content="{DynamicResource Ui.024}" Click="AddPassword_Click" Style="{StaticResource QuietButton}" Foreground="#6BE1C7" HorizontalAlignment="Right"/>
-                                </Grid>
-                                <TextBlock Text="{DynamicResource Ui.025}" Foreground="#94A3BA" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,15"/>
-                                <StackPanel x:Name="PasswordRows"/>
-                                <TextBlock x:Name="PasswordHint" Text="{DynamicResource Ui.026}" TextWrapping="Wrap" Foreground="#7B8CA5" FontSize="10" Margin="0,8,0,0"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource CardBorder}">
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,18"><Border Style="{StaticResource StepNumber}"><TextBlock Text="03" HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Segoe UI" Foreground="#A3B7D0" FontSize="11"/></Border><TextBlock Text="{DynamicResource Ui.027}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/></StackPanel>
-                                <TextBlock Text="{DynamicResource Ui.028}" Foreground="#A8B8CC" FontSize="11" Margin="0,0,0,8"/>
-                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBox x:Name="OutputPathBox" AutomationProperties.AutomationId="OutputPath" AutomationProperties.Name="{DynamicResource Ui.029}" ToolTip="{DynamicResource Ui.030}"/>
-                                    <Button Grid.Column="1" Content="{DynamicResource Ui.031}" Click="ChooseOutput_Click" Margin="9,0,0,0" AutomationProperties.Name="{DynamicResource Ui.032}"/>
-                                </Grid>
-                                <TextBlock Text="{DynamicResource Ui.033}" Foreground="#A8B8CC" FontSize="11" Margin="0,18,0,9"/>
-                                <ComboBox x:Name="CompressionSelector" SelectedIndex="0" AutomationProperties.AutomationId="Compression" AutomationProperties.Name="{DynamicResource Ui.033}">
-                                    <ComboBoxItem Content="{DynamicResource Ui.034}" Tag="zstd"/>
-                                    <ComboBoxItem Content="{DynamicResource Ui.035}" Tag="brotli"/>
-                                    <ComboBoxItem Content="{DynamicResource Ui.036}" Tag="none"/>
-                                </ComboBox>
-                                <Grid Margin="0,21,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="{DynamicResource Ui.037}" Foreground="#A8B8CC" FontSize="11" Margin="0,0,0,9"/>
-                                        <ComboBox x:Name="LayoutSelector" SelectedIndex="0" AutomationProperties.AutomationId="PackageLayout" AutomationProperties.Name="{DynamicResource Ui.037}">
-                                            <ComboBoxItem Content="{DynamicResource Ui.038}" Tag="auto"/>
-                                            <ComboBoxItem Content="{DynamicResource Ui.039}" Tag="embedded"/>
-                                            <ComboBoxItem Content="{DynamicResource Ui.040}" Tag="detached"/>
-                                        </ComboBox>
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="2">
-                                        <TextBlock Text="{DynamicResource Ui.041}" Foreground="#A8B8CC" FontSize="11" Margin="0,0,0,9"/>
-                                        <ComboBox x:Name="RecoveryPercentSelector" SelectedIndex="2" AutomationProperties.AutomationId="RecoveryPercent" AutomationProperties.Name="{DynamicResource Ui.042}">
-                                            <ComboBoxItem Content="{DynamicResource Ui.043}" Tag="0"/>
-                                            <ComboBoxItem Content="{DynamicResource Ui.044}" Tag="5"/>
-                                            <ComboBoxItem Content="{DynamicResource Ui.045}" Tag="10"/>
-                                            <ComboBoxItem Content="{DynamicResource Ui.046}" Tag="20"/>
-                                        </ComboBox>
-                                    </StackPanel>
-                                </Grid>
-                                <TextBlock Text="{DynamicResource Ui.047}" Foreground="#7B8CA5" FontSize="10" TextWrapping="Wrap" LineHeight="19" Margin="0,14,0,0"/>
-                                <TextBlock Text="{DynamicResource Ui.048}" Foreground="#7B8CA5" FontSize="10" TextWrapping="Wrap" LineHeight="19" Margin="0,8,0,0"/>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                    <StackPanel x:Name="ExtractPanel" Visibility="Collapsed">
-                        <Grid Margin="0,0,0,30">
-                            <StackPanel Margin="0,0,75,0">
-                                <TextBlock x:Name="ExtractEyebrow" Text="{DynamicResource Ui.049}" FontFamily="Segoe UI" Foreground="#6BE1C7" FontSize="10" FontWeight="SemiBold"/>
-                                <TextBlock x:Name="ExtractHeading" Text="{DynamicResource Ui.050}" FontSize="27" FontWeight="SemiBold" Margin="0,10,0,9" TextWrapping="Wrap"/>
-                                <TextBlock x:Name="ExtractIntro" Text="{DynamicResource Ui.051}" Foreground="#94A3BA" TextWrapping="Wrap" FontSize="12"/>
-                            </StackPanel>
-                            <Border HorizontalAlignment="Right" VerticalAlignment="Center" Width="54" Height="54" Background="#1A302F" CornerRadius="16">
-                                <TextBlock Text="&#xE785;" FontFamily="Segoe MDL2 Assets" Foreground="#6BE1C7" FontSize="25" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                        </Grid>
-                        <Border Background="#13272B" CornerRadius="8" Padding="14,10" Margin="0,0,0,20"><TextBlock Text="{DynamicResource Ui.052}" Foreground="#8BC8B7" FontSize="11" TextWrapping="Wrap"/></Border>
-                        <Border Style="{StaticResource CardBorder}" AllowDrop="True" DragOver="Package_DragOver" Drop="Package_Drop">
-                            <StackPanel>
-                                <Grid Margin="0,0,0,15"><TextBlock Text="{DynamicResource Ui.053}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                        <Button x:Name="ReloadPackageButton" Content="{DynamicResource Ui.054}" Click="ReloadPackage_Click" Style="{StaticResource QuietButton}" Visibility="Collapsed" Margin="0,0,7,0"/>
-                                        <Button x:Name="ChoosePackageButton" Content="{DynamicResource Ui.055}" Click="ChoosePackage_Click" Padding="14,8" MinHeight="36"/>
-                                    </StackPanel>
-                                </Grid>
-                                <Border Background="#131E2C" CornerRadius="8" Padding="16">
-                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="42"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE74C;" Foreground="#6BE1C7" FontSize="24" VerticalAlignment="Center"/>
-                                        <StackPanel Grid.Column="1"><TextBlock x:Name="PackageNameLabel" Text="{DynamicResource Ui.056}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock x:Name="PackageDetailsLabel" Text="{DynamicResource Ui.057}" Foreground="#8195AE" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource CardBorder}">
-                            <StackPanel>
-                                <TextBlock Text="{DynamicResource Ui.058}" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,9"/>
-                                <TextBlock Text="{DynamicResource Ui.059}" Foreground="#94A3BA" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,17"/>
-                                <PasswordBox x:Name="ExtractPasswordBox" AutomationProperties.AutomationId="ExtractPassword" AutomationProperties.Name="{DynamicResource Ui.060}" KeyDown="ExtractPassword_KeyDown"/>
-                                <TextBlock Text="{DynamicResource Ui.061}" Foreground="#70849E" FontSize="10" Margin="0,9,0,0"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource CardBorder}">
-                            <StackPanel>
-                                <TextBlock Text="{DynamicResource Ui.062}" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,16"/>
-                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBox x:Name="ExtractDestinationBox" AutomationProperties.AutomationId="ExtractDestination" AutomationProperties.Name="{DynamicResource Ui.063}"/>
-                                    <Button Grid.Column="1" Content="{DynamicResource Ui.031}" Click="ChooseDestination_Click" Margin="9,0,0,0" AutomationProperties.Name="{DynamicResource Ui.064}"/>
-                                </Grid>
-                                <TextBlock Text="{DynamicResource Ui.065}" Foreground="#7B8CA5" FontSize="10" TextWrapping="Wrap" Margin="0,13,0,0"/>
-                                <CheckBox x:Name="VerifyFirstCheckBox" IsChecked="False" Margin="0,18,0,0" AutomationProperties.AutomationId="VerifyFirst" AutomationProperties.Name="{DynamicResource Ui.066}">
-                                    <TextBlock Text="{DynamicResource Ui.067}" TextWrapping="Wrap"/>
-                                </CheckBox>
-                            </StackPanel>
-                        </Border>
-                        <Border Background="#162A2A" BorderBrush="#254D45" BorderThickness="1" CornerRadius="10" Padding="17" Margin="0,3,0,0">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE73E;" Foreground="#78CEB9" FontSize="17" Margin="0,2,12,0"/>
-                                <TextBlock Text="{DynamicResource Ui.068}" TextWrapping="Wrap" Foreground="#9AC6BA" FontSize="11" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
-                        <Button Content="{DynamicResource Ui.069}" Style="{StaticResource QuietButton}" Click="ShowRecoveryTools_Click" HorizontalAlignment="Left" Margin="0,13,0,0" AutomationProperties.AutomationId="AdvancedRecovery"/>
-                    </StackPanel>
-                    <StackPanel x:Name="RecoveryPanel" Visibility="Collapsed">
-                        <Button Content="{DynamicResource Ui.070}" Style="{StaticResource QuietButton}" Click="BackToExtract_Click" HorizontalAlignment="Left" Margin="0,0,0,17" AutomationProperties.AutomationId="BackToExtract"/>
-                        <Grid Margin="0,0,0,29">
-                            <StackPanel Margin="0,0,75,0">
-                                <TextBlock Text="{DynamicResource Ui.071}" FontFamily="Segoe UI" Foreground="#6BE1C7" FontSize="10" FontWeight="SemiBold"/>
-                                <TextBlock Text="{DynamicResource Ui.072}" FontSize="27" FontWeight="SemiBold" Margin="0,10,0,9" TextWrapping="Wrap"/>
-                                <TextBlock Text="{DynamicResource Ui.073}" Foreground="#94A3BA" TextWrapping="Wrap" FontSize="12"/>
-                            </StackPanel>
-                            <Border HorizontalAlignment="Right" VerticalAlignment="Center" Width="54" Height="54" Background="#1A302F" CornerRadius="16">
-                                <TextBlock Text="&#xE90F;" FontFamily="Segoe MDL2 Assets" Foreground="#6BE1C7" FontSize="25" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                        </Grid>
-                        <Border Style="{StaticResource CardBorder}" AllowDrop="True" DragOver="Recovery_DragOver" Drop="Recovery_Drop">
-                            <StackPanel>
-                                <Grid Margin="0,0,0,16"><TextBlock Text="{DynamicResource Ui.074}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <Button Content="{DynamicResource Ui.075}" Click="ChooseRecovery_Click" HorizontalAlignment="Right" Padding="14,8" MinHeight="36" AutomationProperties.AutomationId="ChooseRecovery"/>
-                                </Grid>
-                                <TextBox x:Name="RecoveryPathBox" AutomationProperties.AutomationId="RecoveryPath" AutomationProperties.Name="{DynamicResource Ui.076}"/>
-                                <TextBlock Text="{DynamicResource Ui.077}" Foreground="#8DA2BA" FontSize="11" TextWrapping="Wrap" LineHeight="20" Margin="0,12,0,0"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource CardBorder}">
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE73E;" Foreground="#6BE1C7" FontSize="19" Margin="0,1,12,0"/><TextBlock Text="{DynamicResource Ui.078}" FontSize="14" FontWeight="SemiBold"/></StackPanel>
-                                <TextBlock Text="{DynamicResource Ui.079}" Foreground="#9AACC2" FontSize="12" TextWrapping="Wrap" LineHeight="23" Margin="0,17,0,0"/>
-                                <TextBlock Text="{DynamicResource Ui.080}" Foreground="#79BCA9" FontSize="11" TextWrapping="Wrap" Margin="0,13,0,0"/>
-                            </StackPanel>
-                        </Border>
-                        <Border x:Name="RecoverySummaryCard" Style="{StaticResource CardBorder}" Visibility="Collapsed">
-                            <StackPanel>
-                                <TextBlock x:Name="RecoverySummaryTitle" Text="{DynamicResource Ui.081}" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,13"/>
-                                <TextBox x:Name="RecoverySummaryText" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" MinHeight="105" MaxHeight="290" FontSize="11" AutomationProperties.Name="{DynamicResource Ui.082}"/>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </Grid>
-            </ScrollViewer>
-            <Border Grid.Row="2" Grid.Column="1" Background="#131C28" BorderBrush="#293649" BorderThickness="0,1,0,0" Padding="34,18">
-                <Grid>
-                    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
-                        <StackPanel Orientation="Horizontal"><Ellipse x:Name="StatusDot" Fill="#6BE1C7" Width="6" Height="6" Margin="0,0,8,0"/><TextBlock x:Name="StatusTitle" Text="{DynamicResource Ui.083}" FontSize="12" FontWeight="SemiBold"/></StackPanel>
-                        <TextBlock x:Name="StatusDetail" Text="{DynamicResource Ui.084}" Foreground="#8398B2" FontSize="10" Margin="14,6,0,0" TextTrimming="CharacterEllipsis" MaxHeight="30" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button x:Name="OpenResultButton" Content="{DynamicResource Ui.085}" Style="{StaticResource QuietButton}" Click="OpenResult_Click" Visibility="Collapsed" Margin="0,0,9,0"/>
-                        <Button x:Name="CancelButton" Content="{DynamicResource Ui.086}" Click="Cancel_Click" Visibility="Collapsed" Margin="0,0,9,0"/>
-                        <Button x:Name="RepairButton" Content="{DynamicResource Ui.087}" Click="Repair_Click" Visibility="Collapsed" Margin="0,0,9,0" AutomationProperties.AutomationId="RepairRecovery"/>
-                        <Button x:Name="ActionButton" AutomationProperties.AutomationId="RunOperation" Content="{DynamicResource Ui.088}" Style="{StaticResource PrimaryButton}" Click="Action_Click" MinWidth="166" AutomationProperties.Name="{DynamicResource Ui.007}"/>
-                    </StackPanel>
-                    <ProgressBar x:Name="OperationProgress" Grid.Row="1" Grid.ColumnSpan="2" Minimum="0" Maximum="100" Value="0" Visibility="Collapsed" Margin="0,12,0,0" AutomationProperties.Name="{DynamicResource Ui.089}"/>
-                </Grid>
-            </Border>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                <Button x:Name="MenuButton" Style="{StaticResource BarButton}" Content="&#xE712;" Margin="0,4,4,0" Click="Menu_Click"
+                        ToolTip="{DynamicResource Ui.More}" AutomationProperties.Name="{DynamicResource Ui.More}" AutomationProperties.AutomationId="Menu"/>
+                <Button Style="{StaticResource CaptionButton}" Content="&#xE921;" Click="Minimize_Click" AutomationProperties.Name="{DynamicResource Ui.Minimize}"/>
+                <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}" Content="&#xE922;" Click="Maximize_Click" AutomationProperties.Name="{DynamicResource Ui.Maximize}"/>
+                <Button Style="{StaticResource CloseCaptionButton}" Content="&#xE8BB;" Click="Close_Click" AutomationProperties.Name="{DynamicResource Ui.Close}"/>
+            </StackPanel>
         </Grid>
-    </Border>
+
+        <Grid Grid.Row="1">
+
+            <!-- Home: one place to drop anything -->
+            <Grid x:Name="HomeView" Margin="28,4,28,28">
+                <Grid.RowDefinitions><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <Grid>
+                    <Rectangle x:Name="DropFill" RadiusX="18" RadiusY="18" Fill="Transparent"/>
+                    <Rectangle x:Name="DropOutline" RadiusX="18" RadiusY="18" Stroke="{DynamicResource LineStrong}" StrokeThickness="1.5" StrokeDashArray="4 3"/>
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24">
+                        <ContentControl x:Name="HomeLock" Template="{StaticResource LockGlyph}" Width="60" Height="60" Foreground="{DynamicResource Ink}" Focusable="False" HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="DropTitle" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                                   Margin="0,18,0,0" TextOptions.TextFormattingMode="Ideal"/>
+                        <StackPanel x:Name="DropButtons" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">
+                            <Button Content="{DynamicResource Ui.ChooseFile}" Click="ChooseFile_Click" AutomationProperties.AutomationId="ChooseFile"/>
+                            <Button Content="{DynamicResource Ui.ChooseFolder}" Click="ChooseFolder_Click" Margin="8,0,0,0" AutomationProperties.AutomationId="ChooseFolder"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+                <StackPanel Grid.Row="1" Margin="0,18,0,0" HorizontalAlignment="Center">
+                    <TextBlock x:Name="HomeNotice" Foreground="{DynamicResource Danger}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,10" Visibility="Collapsed"/>
+                    <Button Style="{StaticResource LinkButton}" Content="{DynamicResource Ui.OpenPackage}" HorizontalAlignment="Center" Click="OpenPackage_Click" AutomationProperties.AutomationId="OpenPackage"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Encrypt -->
+            <Grid x:Name="EncryptView" Visibility="Collapsed">
+                <Grid.RowDefinitions><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                    <StackPanel MaxWidth="520" Margin="28,6,28,16">
+                        <Border Style="{StaticResource Tile}">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                <Border Width="40" Height="40" CornerRadius="9" Background="{DynamicResource Sunken}">
+                                    <TextBlock x:Name="SourceGlyph" FontFamily="{StaticResource Icons}" FontSize="18" Foreground="{DynamicResource Ink2}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="SourceName" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock x:Name="SourceMeta" Style="{StaticResource Meta}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" Text=" "/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Grid Margin="2,28,2,10">
+                            <TextBlock Text="{DynamicResource Ui.Passwords}" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="PasswordsHint" Text="{DynamicResource Ui.AnyOneOpens}" Style="{StaticResource Meta}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Visibility="Collapsed"/>
+                        </Grid>
+                        <StackPanel x:Name="PasswordRows"/>
+                        <Grid Margin="2,4,2,0">
+                            <Button x:Name="AddPasswordButton" Style="{StaticResource LinkButton}" Content="{DynamicResource Ui.AddPassword}" HorizontalAlignment="Left"
+                                    Click="AddPassword_Click" AutomationProperties.AutomationId="AddPassword"/>
+                            <TextBlock x:Name="EncryptCapsLock" Text="{DynamicResource Ui.CapsLock}" Style="{StaticResource Meta}" Foreground="{DynamicResource Warning}"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed"/>
+                        </Grid>
+
+                        <Border Style="{StaticResource Tile}" Padding="14,0" Height="44" Margin="0,28,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="{DynamicResource Ui.SaveTo}" Foreground="{DynamicResource Ink2}" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                                <TextBlock x:Name="OutputPathText" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                <Button Grid.Column="2" Style="{StaticResource LinkButton}" Content="{DynamicResource Ui.Change}" Margin="14,0,0,0" Click="ChooseOutput_Click" AutomationProperties.AutomationId="ChooseOutput"/>
+                            </Grid>
+                        </Border>
+
+                        <ToggleButton x:Name="OptionsToggle" Style="{StaticResource Disclosure}" Content="{DynamicResource Ui.Options}" Margin="2,18,0,0"
+                                      Checked="OptionsToggle_Changed" Unchecked="OptionsToggle_Changed" AutomationProperties.AutomationId="Options"/>
+                        <Grid x:Name="OptionsPanel" Margin="2,14,0,4" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MinWidth="72"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition/><RowDefinition Height="10"/><RowDefinition/><RowDefinition Height="10"/><RowDefinition/></Grid.RowDefinitions>
+
+                            <TextBlock Text="{DynamicResource Ui.Compression}" Foreground="{DynamicResource Ink2}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                            <Border Grid.Column="1" Style="{StaticResource SegmentTrack}">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="CompressionZstd" Style="{StaticResource Segment}" GroupName="Compression" Content="Zstd" IsChecked="True"/>
+                                    <RadioButton x:Name="CompressionBrotli" Style="{StaticResource Segment}" GroupName="Compression" Content="Brotli"/>
+                                    <RadioButton x:Name="CompressionNone" Style="{StaticResource Segment}" GroupName="Compression" Content="{DynamicResource Ui.NoCompression}" ToolTip="{DynamicResource Ui.NoCompressionTip}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Grid.Row="2" Text="{DynamicResource Ui.Output}" Foreground="{DynamicResource Ink2}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                            <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource SegmentTrack}">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="LayoutAuto" Style="{StaticResource Segment}" GroupName="Layout" Content="{DynamicResource Ui.Auto}" ToolTip="{DynamicResource Ui.AutoTip}" IsChecked="True"/>
+                                    <RadioButton x:Name="LayoutEmbedded" Style="{StaticResource Segment}" GroupName="Layout" Content="{DynamicResource Ui.SingleExe}" ToolTip="{DynamicResource Ui.SingleExeTip}"/>
+                                    <RadioButton x:Name="LayoutDetached" Style="{StaticResource Segment}" GroupName="Layout" Content="EXE + .2pw" ToolTip="{DynamicResource Ui.DetachedTip}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Grid.Row="4" Text="{DynamicResource Ui.Recovery}" Foreground="{DynamicResource Ink2}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                            <Border Grid.Row="4" Grid.Column="1" Style="{StaticResource SegmentTrack}" ToolTip="{DynamicResource Ui.RecoveryTip}">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="Recovery0" Style="{StaticResource Segment}" GroupName="Recovery" Content="{DynamicResource Ui.Off}"/>
+                                    <RadioButton x:Name="Recovery5" Style="{StaticResource Segment}" GroupName="Recovery" Content="5%"/>
+                                    <RadioButton x:Name="Recovery10" Style="{StaticResource Segment}" GroupName="Recovery" Content="10%" IsChecked="True"/>
+                                    <RadioButton x:Name="Recovery20" Style="{StaticResource Segment}" GroupName="Recovery" Content="20%"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+                <Grid Grid.Row="1" MaxWidth="520" Margin="28,4,28,28">
+                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="EncryptNotice" TextWrapping="Wrap" VerticalAlignment="Center" Margin="2,0,16,0" Visibility="Collapsed"/>
+                    <Button x:Name="EncryptButton" Grid.Column="1" Style="{StaticResource PrimaryButton}" Content="{DynamicResource Ui.Encrypt}" MinWidth="112"
+                            Click="Encrypt_Click" AutomationProperties.AutomationId="Encrypt"/>
+                </Grid>
+            </Grid>
+
+            <!-- Unlock -->
+            <ScrollViewer x:Name="UnlockView" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                <StackPanel MaxWidth="360" Margin="28,0,28,44" VerticalAlignment="Center">
+                    <ContentControl Template="{StaticResource LockGlyph}" Width="48" Height="48" Foreground="{DynamicResource Ink}" Focusable="False" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="PackageName" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,14,0,0" TextOptions.TextFormattingMode="Ideal"/>
+                    <TextBlock x:Name="PackageMeta" Style="{StaticResource Meta}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                    <Button x:Name="ReloadButton" Style="{StaticResource LinkButton}" Content="{DynamicResource Ui.Reload}" FontSize="12" HorizontalAlignment="Center" Margin="0,8,0,0"
+                            Visibility="Collapsed" Click="Reload_Click" AutomationProperties.AutomationId="Reload"/>
+
+                    <PasswordBox x:Name="UnlockPassword" Height="44" Margin="0,28,0,0" local:Field.Placeholder="{DynamicResource Ui.PasswordPlaceholder}"
+                                 KeyDown="UnlockPassword_KeyDown" PasswordChanged="UnlockPassword_PasswordChanged"
+                                 AutomationProperties.Name="{DynamicResource Ui.PasswordPlaceholder}" AutomationProperties.AutomationId="UnlockPassword"/>
+                    <TextBlock x:Name="UnlockError" Text="{DynamicResource Ui.WrongPassword}" Style="{StaticResource Meta}" Foreground="{DynamicResource Danger}" Margin="2,8,0,0" Visibility="Collapsed"/>
+                    <TextBlock x:Name="UnlockCapsLock" Text="{DynamicResource Ui.CapsLock}" Style="{StaticResource Meta}" Foreground="{DynamicResource Warning}" Margin="2,8,0,0" Visibility="Collapsed"/>
+
+                    <Button x:Name="DecryptButton" Style="{StaticResource PrimaryButton}" Content="{DynamicResource Ui.Decrypt}" Height="40" Margin="0,16,0,0"
+                            Click="Decrypt_Click" AutomationProperties.AutomationId="Decrypt"/>
+                    <TextBlock x:Name="UnlockNotice" TextWrapping="Wrap" TextAlignment="Center" Margin="0,14,0,0" Visibility="Collapsed"/>
+
+                    <Grid Margin="2,26,2,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="{DynamicResource Ui.RestoreTo}" Style="{StaticResource Meta}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock x:Name="DestinationText" Grid.Column="1" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        <Button Grid.Column="2" Style="{StaticResource LinkButton}" Content="{DynamicResource Ui.Change}" FontSize="12" Margin="10,0,0,0"
+                                Click="ChooseDestination_Click" AutomationProperties.AutomationId="ChooseDestination"/>
+                    </Grid>
+                    <CheckBox x:Name="VerifyFirstCheck" Content="{DynamicResource Ui.VerifyFirst}" Margin="2,12,0,0" Visibility="Collapsed" AutomationProperties.AutomationId="VerifyFirst"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Repair -->
+            <ScrollViewer x:Name="RepairView" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                <StackPanel MaxWidth="420" Margin="28,0,28,44" VerticalAlignment="Center">
+                    <Border Width="48" Height="48" CornerRadius="12" Background="{DynamicResource Sunken}" HorizontalAlignment="Center">
+                        <TextBlock Text="&#xE90F;" FontFamily="{StaticResource Icons}" FontSize="20" Foreground="{DynamicResource Ink2}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock x:Name="RecoveryName" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,14,0,0" TextOptions.TextFormattingMode="Ideal"/>
+                    <TextBlock Text="{DynamicResource Ui.RecoveryFile}" Style="{StaticResource Meta}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+
+                    <Border x:Name="RepairResult" Style="{StaticResource Tile}" Margin="0,26,0,0" Padding="16,14" Visibility="Collapsed">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse x:Name="RepairDot" Width="8" Height="8" VerticalAlignment="Center" Margin="0,1,10,0"/>
+                                <TextBlock x:Name="RepairStatus" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBox x:Name="RepairSummary" Style="{StaticResource Readout}" Margin="18,6,0,0" MaxHeight="150" AutomationProperties.AutomationId="RepairSummary"/>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock x:Name="RepairNotice" TextWrapping="Wrap" TextAlignment="Center" Margin="0,16,0,0" Visibility="Collapsed"/>
+
+                    <Button x:Name="RepairAction" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Center" MinWidth="128" Margin="0,26,0,0"
+                            Click="RepairAction_Click" AutomationProperties.AutomationId="RepairAction"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Working -->
+            <Grid x:Name="WorkingView" Visibility="Collapsed">
+                <StackPanel Width="380" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,0,0,48">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="WorkStage" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="WorkPercent" Grid.Column="1" FontSize="15" Foreground="{DynamicResource Ink2}" Margin="16,0,0,0" Typography.NumeralAlignment="Tabular"/>
+                    </Grid>
+                    <ProgressBar x:Name="WorkProgress" Maximum="100" Margin="0,12,0,0" AutomationProperties.Name="{DynamicResource Ui.Progress}"/>
+                    <Grid Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="WorkPath" Style="{StaticResource Meta}" TextTrimming="CharacterEllipsis" Text=" "/>
+                        <TextBlock x:Name="WorkDetail" Grid.Column="1" Style="{StaticResource Meta}" Margin="16,0,0,0" Typography.NumeralAlignment="Tabular" Text=" "/>
+                    </Grid>
+                    <Button x:Name="CancelButton" Content="{DynamicResource Ui.Cancel}" HorizontalAlignment="Center" MinWidth="96" Margin="0,40,0,0"
+                            Click="Cancel_Click" AutomationProperties.AutomationId="Cancel"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Done -->
+            <ScrollViewer x:Name="DoneView" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                <StackPanel MaxWidth="440" Margin="28,0,28,44" VerticalAlignment="Center">
+                    <Grid x:Name="DoneMark" Width="52" Height="52" HorizontalAlignment="Center" RenderTransformOrigin=".5,.5">
+                        <Grid.RenderTransform><ScaleTransform/></Grid.RenderTransform>
+                        <Ellipse Fill="{DynamicResource SuccessSoft}"/>
+                        <Path Data="M 17.5,26.5 L 23.5,32.5 L 35,21" Stroke="{DynamicResource Success}" StrokeThickness="2.4"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                    </Grid>
+                    <TextBlock x:Name="DoneTitle" Style="{StaticResource Heading}" HorizontalAlignment="Center" Margin="0,18,0,0"/>
+                    <Border Style="{StaticResource Tile}" Padding="0" Margin="0,24,0,0">
+                        <StackPanel x:Name="DoneFiles"/>
+                    </Border>
+                    <TextBlock x:Name="DoneHint" Style="{StaticResource Meta}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0"/>
+                    <TextBlock x:Name="DoneWarning" Foreground="{DynamicResource Warning}" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,28,0,0">
+                        <Button x:Name="DonePrimary" Style="{StaticResource PrimaryButton}" MinWidth="120" Click="DonePrimary_Click" AutomationProperties.AutomationId="DonePrimary"/>
+                        <Button x:Name="DoneSecondary" MinWidth="96" Margin="8,0,0,0" Click="DoneSecondary_Click" AutomationProperties.AutomationId="DoneSecondary"/>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
 </Window>

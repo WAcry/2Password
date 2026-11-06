@@ -39,6 +39,8 @@ The release currently has no configured code-signing certificate, so Windows may
 4. Choose the package layout. Both GUI and CLI creation default to 10% PAR2 recovery data. The GUI also offers 5%, 20%, and disabled options.
 5. Create the package and keep or send all files listed in the result. The source files are retained.
 
+What you drop into the window decides the next step: a regular file or folder opens encryption, a 2Password package opens decryption, and a `.par2` file opens checking and repair. Compression, output layout and the recovery percentage sit under Options. The window follows the Windows light or dark theme, and the menu in the top-right corner switches between English and Chinese.
+
 A recipient opens the extraction EXE, enters **any one** of the passwords, and selects a **new directory that does not already exist**. The original top-level file or folder name is retained within that directory. The destination is published only after the complete package has passed authentication and structural checks.
 
 Passwords are independent access keys: **any one password unlocks all contents, but knowing it does not reveal the other passwords.** They are not multiple factors that must be entered together.
