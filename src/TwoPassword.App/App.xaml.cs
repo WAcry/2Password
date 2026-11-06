@@ -26,22 +26,18 @@ public partial class App : Application
 
         var processPath = Environment.ProcessPath;
         var embedded = processPath is not null && PackageService.HasPackage(processPath);
-        if (!embedded && processPath is not null)
-        {
-            try { embedded = RecoveryService.HasRecoveryFiles(processPath); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
-        }
         Theme.Initialize(e.Args);
         string? external = null, target = null;
-        var encrypt = false;
+        bool encrypt = false, repair = false;
         for (var index = 0; index < e.Args.Length; index++)
         {
             if (e.Args[index] is "--stub" or "--language" or "--theme") { index++; continue; }
             if (e.Args[index] == "--target" && index + 1 < e.Args.Length) { target = e.Args[++index]; continue; }
             if (e.Args[index] == "--encrypt" && index + 1 < e.Args.Length) { encrypt = true; external ??= e.Args[++index]; continue; }
+            if (e.Args[index] == "--repair" && index + 1 < e.Args.Length) { repair = true; external ??= e.Args[++index]; continue; }
             if (!e.Args[index].StartsWith("--", StringComparison.Ordinal)) external ??= e.Args[index];
         }
-        MainWindow = new MainWindow(embedded ? processPath : null, stubOverride, embedded ? null : external, encrypt && !embedded, target);
+        MainWindow = new MainWindow(embedded ? processPath : null, stubOverride, embedded ? null : external, encrypt && !embedded, target, repair && !embedded);
         ShutdownMode = ShutdownMode.OnMainWindowClose;
         MainWindow.Show();
     }
@@ -57,7 +53,6 @@ internal static class CommandLine
     {
         string? reportPath = null;
         FileStream? reportStream = null;
-        PackageResult? createdPackage = null;
         try
         {
             var options = Parse(args);
@@ -102,7 +97,7 @@ internal static class CommandLine
             if (commandCount != 1) throw new ArgumentException(L("Choose exactly one operation."));
             object result;
             string operation;
-            RecoveryResult? recovery = null;
+            string? recoveryError = null;
             if (options.ContainsKey("--inspect") || options.ContainsKey("--inspect-self"))
             {
                 operation = "inspect";
@@ -163,7 +158,8 @@ internal static class CommandLine
                     "auto" => PackageLayout.Auto, "embedded" => PackageLayout.Embedded, "detached" => PackageLayout.Detached,
                     _ => throw new ArgumentException(L("Layout must be auto, embedded or detached."))
                 };
-                if (!int.TryParse(options.GetValueOrDefault("--recovery-percent", "10"), out var redundancyPercent) || redundancyPercent is not (0 or 5 or 10 or 20))
+                var percentText = options.GetValueOrDefault("--recovery-percent") ?? RecoveryService.DefaultPercent.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (!int.TryParse(percentText, out var redundancyPercent) || redundancyPercent is not (0 or 5 or 10 or 20))
                     throw new ArgumentException(L("Recovery percentage must be 0, 5, 10 or 20."));
                 string json = "";
                 string[]? passwords = null;
@@ -174,19 +170,18 @@ internal static class CommandLine
                     var stub = options.GetValueOrDefault("--stub") ?? StandaloneStub();
                     var output = Required(options, "--output");
                     if (!output.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException(L("Self-extracting output must end in .exe."));
-                    createdPackage = await PackageService.CreateAsync(new CreateOptions(Required(options, "--create"),
-                        output, passwords, compression, stub, layout), cancellationToken: cancellation.Token);
-                    result = createdPackage;
+                    var (package, error) = await RecoveryService.CreateAsync(new CreateOptions(Required(options, "--create"),
+                        output, passwords, compression, stub, layout), redundancyPercent, cancellationToken: cancellation.Token);
+                    result = package;
+                    if (error is not null) recoveryError = UiText.DescribeException(error);
                 }
                 finally
                 {
                     if (passwords is not null) Array.Clear(passwords);
                     json = "";
                 }
-                if (redundancyPercent > 0)
-                    recovery = await RecoveryService.CreateAsync(createdPackage.OutputPath, redundancyPercent, cancellationToken: cancellation.Token);
             }
-            await ReportAsync(reportStream, new { success = true, operation, result, recovery });
+            await ReportAsync(reportStream, new { success = true, operation, result, recoveryError });
             return 0;
         }
         catch (Exception error)
@@ -194,9 +189,7 @@ internal static class CommandLine
             var exitCode = error is ArgumentException ? 2 : 1;
             try
             {
-                await ReportAsync(reportStream, new { success = false, error = UiText.DescribeException(error), errorType = error.GetType().Name,
-                    packageSucceeded = createdPackage is not null, package = createdPackage,
-                    note = createdPackage is null ? null : L("The encrypted package was successfully created and kept; the recovery stage or result report did not complete.") });
+                await ReportAsync(reportStream, new { success = false, error = UiText.DescribeException(error), errorType = error.GetType().Name });
             }
             catch { WriteOutput(L("Unable to write command result.") + "\n"); }
             return exitCode;

@@ -93,6 +93,12 @@ internal static partial class Program
             RewriteFooters(damaged, record => BinaryPrimitives.WriteInt64LittleEndian(record.AsSpan(8), -1));
             await CheckDamaged(damaged, "negative-footer");
         });
+        await Run("Recovery length that does not reach the trailer is rejected", async () =>
+        {
+            byte[] damaged = (byte[])original.Clone();
+            RewriteFooters(damaged, record => BinaryPrimitives.WriteInt64LittleEndian(record.AsSpan(24), 1));
+            await CheckDamaged(damaged, "recovery-length");
+        });
         await Run("Invalid compression identifier in all replicas is rejected", async () =>
             await CheckDamaged(RewriteLogicalHeader(original, header => header[16] = 0xff), "unknown-compression"));
         await Run("All corrupted header copies fail closed", async () =>
@@ -152,10 +158,27 @@ internal static partial class Program
             await PackageService.ExtractAsync(new(path, output, PasswordA));
             AssertTreeEqual(_fixture, Path.Combine(output, Path.GetFileName(_fixture)));
         });
-        await Run("Independent v2 reader authenticates frames and decodes standard PAX", async () =>
+        await Run("Independent v3 reader authenticates frames and decodes standard PAX", async () =>
         {
             var decoded = await ReferenceDecode(_package);
             AssertReferenceTar(decoded.Tar);
+        });
+        await Run("Recovery data between payload and trailer is skipped by both readers", async () =>
+        {
+            byte[] blob = RandomNumberGenerator.GetBytes(4099);
+            string package = Path.Combine(_root, "with-recovery.2pw");
+            var created = await PackageService.CreateAsync(new(_fixture, package, [PasswordA], PackageCompression.Zstd,
+                Recovery: (_, _, output, _) => output.Write(blob)));
+            Assert(created.RecoveryBytes == blob.Length && (await PackageService.InspectAsync(package)).RecoveryBytes == blob.Length,
+                "Recovery length was not recorded.");
+            var regions = PackageService.LocateRegions(package);
+            byte[] bytes = await File.ReadAllBytesAsync(package);
+            Assert(regions.RecoveryLength == blob.Length && bytes.AsSpan((int)regions.RecoveryOffset, blob.Length).SequenceEqual(blob),
+                "Recovery data was not stored in front of the trailer.");
+            AssertReferenceTar((await ReferenceDecode(package)).Tar);
+            string output = Path.Combine(_root, "with-recovery-output");
+            await PackageService.ExtractAsync(new(package, output, PasswordA));
+            AssertTreeEqual(_fixture, Path.Combine(output, Path.GetFileName(_fixture)));
         });
         await RunArchiveAttackCases();
         await RunDetachedCases();

@@ -7,192 +7,182 @@ namespace TwoPassword.Tests;
 
 internal static partial class Program
 {
+    private const string MainPacket = "PAR 2.0\0Main\0\0\0\0";
+    private const string FileDescPacket = "PAR 2.0\0FileDesc";
+    private const string RecoveryPacket = "PAR 2.0\0RecvSlic";
+
     private static async Task RunPar2MetadataTests()
     {
-        await Run("PAR2 parser accepts independently encoded Unicode descriptor bytes", async () =>
+        byte[] payload = RandomNumberGenerator.GetBytes(20000);
+        await Run("PAR2 block size follows par2cmdline defaults", () =>
         {
-            string directory = ParityDirectory();
-            string basename = "资料_日本語_🙂.exe";
-            byte[] content = "synthetic encrypted content"u8.ToArray();
-            string index = Path.Combine(directory, basename + ".par2");
-            await File.WriteAllBytesAsync(index, BuildParity([(basename, content)]));
-            var parsed = await Par2Metadata.LoadAsync(index, CancellationToken.None);
-            Assert(parsed.Sources.Count == 1 && parsed.Sources[0].Name == basename &&
-                parsed.Sources[0].Length == content.Length &&
-                parsed.Sources[0].Md5.SequenceEqual(MD5.HashData(content)), "Unicode PAR2 descriptor changed.");
+            Assert(Par2Metadata.BlockSize(1) == 4 && Par2Metadata.BlockSize(8000) == 4 && Par2Metadata.BlockSize(8001) == 8,
+                "Small payload block size changed.");
+            Assert(Par2Metadata.BlockSize(5 * 1024 * 1024) == 2624, "Block size differs from par2cmdline for 5 MiB.");
+            return Task.CompletedTask;
         });
-        await Run("PAR2 parser accepts only the intended launcher and sidecar", async () =>
+        await Run("PAR2 reader accepts a set stored after the payload", () =>
         {
-            string directory = ParityDirectory();
-            string index = Path.Combine(directory, "package.exe.par2");
-            await File.WriteAllBytesAsync(index, BuildParity([("package.exe", [1]), ("package.2pw", [2])]));
-            var set = await Par2Metadata.LoadAsync(index, CancellationToken.None);
-            Assert(set.Sources.Count == 2, "Two-file recovery set not recognized.");
+            var set = ReadParity(BuildParity(payload), payload.Length);
+            long blockSize = Par2Metadata.BlockSize(payload.Length);
+            byte[] first = new byte[blockSize];
+            payload.AsSpan(0, (int)blockSize).CopyTo(first);
+            Assert(set.BlockSize == blockSize && set.SourceMd5.SequenceEqual(MD5.HashData(payload)) &&
+                set.SliceMd5.Length == (payload.Length + blockSize - 1) / blockSize && set.SliceMd5[0].SequenceEqual(MD5.HashData(first)),
+                "Recovery set metadata changed.");
+            Assert(set.RecoveryBlocks == 2 && set.Packets.Count == 5, "Creator packet was kept or a packet was lost.");
+            return Task.CompletedTask;
         });
-        await Run("PAR2 missing index recovers metadata from an intact volume", async () =>
+        await Run("PAR2 reader resumes at the next packet after damage", () =>
         {
-            string directory = ParityDirectory();
-            string index = Path.Combine(directory, "package.exe.par2");
-            string volume = Path.Combine(directory, "package.exe.vol000+001.par2");
-            await File.WriteAllBytesAsync(volume, BuildParity([("package.exe", [1, 2, 3])]));
-            var set = await Par2Metadata.LoadAsync(index, CancellationToken.None);
-            Assert(set.RecoveryFiles.Length == 1 && set.IndexPath == volume, "Missing-index fallback failed.");
+            byte[] critical = BuildParity(payload, recovery: 0);
+            byte[] region = [.. critical, .. critical, .. BuildParity(payload, critical: false)];
+            region[64 + 3] ^= 1;
+            region[critical.Length * 2] ^= 1;
+            var set = ReadParity(region, payload.Length);
+            Assert(set.RecoveryBlocks == 1, "Damage was not limited to the packets it hit.");
+            return Task.CompletedTask;
         });
-        await Run("PAR2 completely excludes a corrupted index before native discovery", async () =>
+        await Run("PAR2 reader ignores a truncated final packet", () =>
         {
-            string directory = ParityDirectory();
-            string index = Path.Combine(directory, "package.exe.par2");
-            string volume = Path.Combine(directory, "package.exe.vol000+001.par2");
-            byte[] valid = BuildParity([("package.exe", [1, 2, 3])]);
-            await File.WriteAllBytesAsync(volume, valid);
-            byte[] broken = (byte[])valid.Clone();
-            broken[0] ^= 1;
-            await File.WriteAllBytesAsync(index, broken);
-            var set = await Par2Metadata.LoadAsync(index, CancellationToken.None);
-            Assert(set.IndexPath == volume && set.RecoveryFiles.Length == 1 && !set.RecoveryFiles.Contains(index),
-                "Corrupted index leaked into native input set.");
+            Assert(ReadParity(BuildParity(payload)[..^1], payload.Length).RecoveryBlocks == 1, "Truncated packet was used.");
+            return Task.CompletedTask;
         });
-        await Run("PAR2 excludes an entire volume with a late truncated packet", async () =>
+        await Run("PAR2 differing checksum-valid recovery sets fail closed", () =>
         {
-            string directory = ParityDirectory();
-            string index = Path.Combine(directory, "package.exe.par2");
-            string volume = Path.Combine(directory, "package.exe.vol000+001.par2");
-            byte[] valid = BuildParity([("package.exe", [1, 2, 3])]);
-            await File.WriteAllBytesAsync(index, valid);
-            await File.WriteAllBytesAsync(volume, valid[..^1]);
-            var set = await Par2Metadata.LoadAsync(index, CancellationToken.None);
-            Assert(set.RecoveryFiles.SequenceEqual([index]), "Partially validated volume was retained.");
+            byte[] other = RandomNumberGenerator.GetBytes(payload.Length);
+            return MustFail(() => Task.FromResult(ReadParity([.. BuildParity(payload), .. BuildParity(other)], payload.Length)));
         });
-        await Run("PAR2 differing checksum-valid recovery sets fail closed", async () =>
+        await Run("PAR2 conflicting descriptions of the same FileID fail closed", () =>
         {
-            string directory = ParityDirectory();
-            string index = Path.Combine(directory, "package.exe.par2");
-            await File.WriteAllBytesAsync(index, BuildParity([("package.exe", [1])]));
-            await File.WriteAllBytesAsync(Path.Combine(directory, "package.exe.vol000+001.par2"),
-                BuildParity([("package.exe", [2])]));
-            await MustFail(() => Par2Metadata.LoadAsync(index, CancellationToken.None));
+            byte[] valid = BuildParity(payload);
+            byte[] conflicting = RewriteParityPacket(valid, FileDescPacket, body => body[16] ^= 1);
+            return MustFail(() => Task.FromResult(ReadParity([.. valid, .. conflicting], payload.Length)));
         });
-        await Run("PAR2 conflicting full hashes for the same FileID fail closed", async () =>
-        {
-            string directory = ParityDirectory();
-            string index = Path.Combine(directory, "package.exe.par2");
-            byte[] valid = BuildParity([("package.exe", new byte[20000])]);
-            byte[] conflicting = RewriteParityPacket(valid, "PAR 2.0\0FileDesc", body => body[16] ^= 1);
-            await File.WriteAllBytesAsync(index, valid);
-            await File.WriteAllBytesAsync(Path.Combine(directory, "package.exe.vol000+001.par2"), conflicting);
-            await MustFail(() => Par2Metadata.LoadAsync(index, CancellationToken.None));
-        });
-        foreach (string name in new[] { "../package.exe", @"..\package.exe", "C:/package.exe",
-            "package.exe:ads", "NUL.exe", "package.exe.", "unrelated.exe", "package.exe\0hidden" })
+        foreach (string name in new[] { "../payload", "PAYLOAD", "payloa", "payload.exe", "payload\0x", "package.exe" })
         {
             string captured = name;
-            await Run("PAR2 rejects checksum-valid unsafe/unrelated filename: " +
-                name.Replace("\0", "<NUL>", StringComparison.Ordinal), async () =>
-            {
-                string directory = ParityDirectory();
-                string index = Path.Combine(directory, "package.exe.par2");
-                await File.WriteAllBytesAsync(index, BuildParity([(captured, [1])]));
-                await MustFail(() => Par2Metadata.LoadAsync(index, CancellationToken.None));
-            });
+            await Run("PAR2 rejects a source name other than the payload: " + name.Replace("\0", "<NUL>", StringComparison.Ordinal),
+                () => MustFail(() => Task.FromResult(ReadParity(BuildParity(payload, captured), payload.Length))));
         }
-        await Run("PAR2 rejects case-colliding target descriptors", async () =>
+        await Run("PAR2 rejects a set describing a different payload length", () =>
+            MustFail(() => Task.FromResult(ReadParity(BuildParity(payload), payload.Length + 1))));
+        await Run("PAR2 rejects a non-default block size", () =>
+            MustFail(() => Task.FromResult(ReadParity(BuildParity(payload, blockSize: 4096), payload.Length))));
+        await Run("PAR2 verifies FileID independently of packet checksum", () =>
         {
-            string directory = ParityDirectory();
-            string index = Path.Combine(directory, "package.exe.par2");
-            await File.WriteAllBytesAsync(index, BuildParity([("package.exe", [1]), ("PACKAGE.EXE", [2])]));
-            await MustFail(() => Par2Metadata.LoadAsync(index, CancellationToken.None));
+            byte[] region = RewriteParityPacket(BuildParity(payload), FileDescPacket, body => body[0] ^= 1);
+            return MustFail(() => Task.FromResult(ReadParity(region, payload.Length)));
         });
-        await Run("PAR2 rejects Unicode filename override packets", async () =>
+        await Run("PAR2 rejects excessive block allocation metadata", () =>
         {
-            string directory = ParityDirectory();
-            string index = Path.Combine(directory, "package.exe.par2");
-            byte[] valid = BuildParity([("package.exe", [1])]);
-            byte[] packet = ParityPacket("PAR 2.0\0UniFileN", new byte[32], valid.AsSpan(32, 16).ToArray());
-            await File.WriteAllBytesAsync(index, [.. valid, .. packet]);
-            await MustFail(() => Par2Metadata.LoadAsync(index, CancellationToken.None));
+            byte[] region = RewriteParityPacket(BuildParity(payload), MainPacket, body => BinaryPrimitives.WriteUInt64LittleEndian(body, ulong.MaxValue));
+            return MustFail(() => Task.FromResult(ReadParity(region, payload.Length)));
         });
-        await Run("PAR2 verifies FileID independently of packet checksum", async () =>
+        await Run("PAR2 keeps unknown packet types away from the native tool", () =>
         {
-            string directory = ParityDirectory();
-            string index = Path.Combine(directory, "package.exe.par2");
-            byte[] data = RewriteParityPacket(BuildParity([("package.exe", [1])]),
-                "PAR 2.0\0FileDesc", body => body[0] ^= 1);
-            await File.WriteAllBytesAsync(index, data);
-            await MustFail(() => Par2Metadata.LoadAsync(index, CancellationToken.None));
+            byte[] valid = BuildParity(payload);
+            byte[] setId = valid.AsSpan(32, 16).ToArray();
+            byte[] region = [.. valid, .. ParityPacket("PAR 2.0\0UniFileN", new byte[32], setId)];
+            using var file = ParityFile(region, out long start);
+            var set = Par2Metadata.Read(file, start, region.Length, payload.Length, CancellationToken.None);
+            using var output = new MemoryStream();
+            Assert(Par2Metadata.Copy(file, start, set, output, CancellationToken.None) == 2, "Recovery packets were lost while copying.");
+            string copied = Encoding.ASCII.GetString(output.ToArray());
+            Assert(!copied.Contains("UniFileN", StringComparison.Ordinal) && !copied.Contains("Creator", StringComparison.Ordinal),
+                "Unused packet types reached the native input.");
+            return Task.CompletedTask;
         });
-        await Run("PAR2 rejects excessive block allocation metadata", async () =>
+        await Run("PAR2 skips wrong-size and duplicate recovery blocks", () =>
         {
-            string directory = ParityDirectory();
-            string index = Path.Combine(directory, "package.exe.par2");
-            byte[] data = RewriteParityPacket(BuildParity([("package.exe", [1])]),
-                "PAR 2.0\0Main\0\0\0\0", body => BinaryPrimitives.WriteUInt64LittleEndian(body, ulong.MaxValue));
-            await File.WriteAllBytesAsync(index, data);
-            await MustFail(() => Par2Metadata.LoadAsync(index, CancellationToken.None));
+            byte[] valid = BuildParity(payload);
+            byte[] setId = valid.AsSpan(32, 16).ToArray();
+            byte[] shortBlock = new byte[8];
+            BinaryPrimitives.WriteUInt32LittleEndian(shortBlock, 7);
+            byte[] region = [.. valid, .. ParityPacket(RecoveryPacket, shortBlock, setId), .. BuildParity(payload, critical: false, recovery: 1)];
+            var set = ReadParity(region, payload.Length);
+            Assert(set.RecoveryBlocks == 2 && set.Packets.Count == 5, "A malformed or repeated recovery block was counted.");
+            return Task.CompletedTask;
         });
-        await Run("PAR2 rejects inconsistent recovery block lengths", async () =>
+        await Run("PAR2 copy checks each packet again while reading it", () =>
         {
-            string directory = ParityDirectory();
-            string index = Path.Combine(directory, "package.exe.par2");
-            byte[] valid = BuildParity([("package.exe", [1])]);
-            byte[] recovery = new byte[8];
-            BinaryPrimitives.WriteUInt32LittleEndian(recovery, 1);
-            await File.WriteAllBytesAsync(index, [.. valid, .. ParityPacket("PAR 2.0\0RecvSlic", recovery, valid.AsSpan(32, 16).ToArray())]);
-            await MustFail(() => Par2Metadata.LoadAsync(index, CancellationToken.None));
+            byte[] region = BuildParity(payload);
+            using var file = ParityFile(region, out long start);
+            var set = Par2Metadata.Read(file, start, region.Length, payload.Length, CancellationToken.None);
+            var last = set.Packets[^1];
+            file.Position = start + last.Offset + 70;
+            file.WriteByte(0x5a);
+            file.Flush();
+            using var output = new MemoryStream();
+            Assert(Par2Metadata.Copy(file, start, set, output, CancellationToken.None) == 1 &&
+                output.Length == set.Packets.Sum(p => p.Length) - last.Length, "A packet changed after validation was copied.");
+            return Task.CompletedTask;
         });
-        await Run("PAR2 parser cancellation stops before work", async () =>
+        await Run("PAR2 parser cancellation stops before work", () =>
         {
             using var cts = new CancellationTokenSource();
             cts.Cancel();
-            await MustCancel(() => Par2Metadata.LoadAsync(Path.Combine(_root, "missing.exe.par2"), cts.Token));
+            return MustCancel(() => Task.FromResult(ReadParity(BuildParity(payload), payload.Length, cts.Token)));
         });
     }
 
-    private static string ParityDirectory()
+    private static Par2Set ReadParity(byte[] region, long sourceLength, CancellationToken cancellationToken = default)
     {
-        string path = Path.Combine(_root, "par2-" + Guid.NewGuid().ToString("N")[..10]);
-        Directory.CreateDirectory(path);
-        return path;
+        using var file = ParityFile(region, out long start);
+        return Par2Metadata.Read(file, start, region.Length, sourceLength, cancellationToken);
     }
 
-    private static byte[] BuildParity((string Name, byte[] Data)[] files)
+    /// <summary>Places the region between unrelated bytes, as it sits between the payload and the trailer.</summary>
+    private static FileStream ParityFile(byte[] region, out long start)
     {
-        const int blockSize = 4096;
-        var descriptions = new List<(byte[] Body, byte[] Checks)>();
-        foreach (var source in files)
+        string path = Path.Combine(_root, "par2-" + Guid.NewGuid().ToString("N")[..10] + ".bin");
+        byte[] before = RandomNumberGenerator.GetBytes(37), after = RandomNumberGenerator.GetBytes(192);
+        File.WriteAllBytes(path, [.. before, .. region, .. after]);
+        start = before.Length;
+        return new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None, 4096, FileOptions.DeleteOnClose);
+    }
+
+    private static byte[] BuildParity(byte[] data, string name = Par2Metadata.SourceName, long? blockSize = null,
+        bool critical = true, int recovery = 2)
+    {
+        long size = blockSize ?? Par2Metadata.BlockSize(data.Length);
+        byte[] nameBytes = Encoding.UTF8.GetBytes(name);
+        byte[] description = new byte[56 + (nameBytes.Length + 3) / 4 * 4];
+        MD5.HashData(data).CopyTo(description, 16);
+        MD5.HashData(data.AsSpan(0, Math.Min(16384, data.Length))).CopyTo(description, 32);
+        BinaryPrimitives.WriteUInt64LittleEndian(description.AsSpan(48), (ulong)data.Length);
+        nameBytes.CopyTo(description, 56);
+        MD5.HashData(description.AsSpan(32, 24 + nameBytes.Length)).CopyTo(description, 0);
+        int count = (int)((data.Length + size - 1) / size);
+        byte[] checks = new byte[16 + count * 20];
+        description.AsSpan(0, 16).CopyTo(checks);
+        for (int i = 0; i < count; i++)
         {
-            byte[] name = Encoding.UTF8.GetBytes(source.Name);
-            byte[] body = new byte[56 + (name.Length + 3) / 4 * 4];
-            MD5.HashData(source.Data).CopyTo(body, 16);
-            MD5.HashData(source.Data.AsSpan(0, Math.Min(16384, source.Data.Length))).CopyTo(body, 32);
-            BinaryPrimitives.WriteUInt64LittleEndian(body.AsSpan(48), (ulong)source.Data.Length);
-            name.CopyTo(body, 56);
-            MD5.HashData(body.AsSpan(32, 24 + name.Length)).CopyTo(body, 0);
-            int count = (source.Data.Length + blockSize - 1) / blockSize;
-            byte[] checks = new byte[16 + count * 20];
-            body.AsSpan(0, 16).CopyTo(checks);
-            for (int i = 0; i < count; i++)
-            {
-                byte[] padded = new byte[blockSize];
-                source.Data.AsSpan(i * blockSize, Math.Min(blockSize, source.Data.Length - i * blockSize)).CopyTo(padded);
-                MD5.HashData(padded).CopyTo(checks, 16 + i * 20);
-                BinaryPrimitives.WriteUInt32LittleEndian(checks.AsSpan(32 + i * 20), ParityCrc32(padded));
-            }
-            descriptions.Add((body, checks));
+            byte[] padded = new byte[size];
+            data.AsSpan((int)(i * size), (int)Math.Min(size, data.Length - i * size)).CopyTo(padded);
+            MD5.HashData(padded).CopyTo(checks, 16 + i * 20);
+            BinaryPrimitives.WriteUInt32LittleEndian(checks.AsSpan(32 + i * 20), ParityCrc32(padded));
         }
-        byte[] main = new byte[12 + files.Length * 16];
-        BinaryPrimitives.WriteUInt64LittleEndian(main, blockSize);
-        BinaryPrimitives.WriteUInt32LittleEndian(main.AsSpan(8), (uint)files.Length);
-        for (int i = 0; i < descriptions.Count; i++) descriptions[i].Body.AsSpan(0, 16).CopyTo(main.AsSpan(12 + i * 16));
+        byte[] main = new byte[28];
+        BinaryPrimitives.WriteUInt64LittleEndian(main, (ulong)size);
+        BinaryPrimitives.WriteUInt32LittleEndian(main.AsSpan(8), 1);
+        description.AsSpan(0, 16).CopyTo(main.AsSpan(12));
         byte[] setId = MD5.HashData(main);
         using var output = new MemoryStream();
-        output.Write(ParityPacket("PAR 2.0\0Main\0\0\0\0", main, setId));
-        foreach (var description in descriptions)
+        if (critical)
         {
-            output.Write(ParityPacket("PAR 2.0\0FileDesc", description.Body, setId));
-            output.Write(ParityPacket("PAR 2.0\0IFSC\0\0\0\0", description.Checks, setId));
+            output.Write(ParityPacket(MainPacket, main, setId));
+            output.Write(ParityPacket(FileDescPacket, description, setId));
+            output.Write(ParityPacket("PAR 2.0\0IFSC\0\0\0\0", checks, setId));
+            output.Write(ParityPacket("PAR 2.0\0Creator\0", Encoding.ASCII.GetBytes("2Password independent tests"), setId));
         }
-        output.Write(ParityPacket("PAR 2.0\0Creator\0", Encoding.ASCII.GetBytes("2Password independent tests"), setId));
-        output.Write(ParityPacket("PAR 2.0\0RecvSlic", new byte[4 + blockSize], setId));
+        for (int exponent = 0; exponent < recovery; exponent++)
+        {
+            byte[] body = new byte[4 + size];
+            BinaryPrimitives.WriteUInt32LittleEndian(body, (uint)exponent);
+            RandomNumberGenerator.Fill(body.AsSpan(4));
+            output.Write(ParityPacket(RecoveryPacket, body, setId));
+        }
         return output.ToArray();
     }
 

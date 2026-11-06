@@ -37,20 +37,21 @@
   --extract &lt;加密包&gt; --output &lt;新目录&gt; --password-stdin [--verify-first] [--report &lt;新报告.json&gt;]
   --extract-self --output &lt;新目录&gt; --password-stdin [--verify-first] [--report &lt;新报告.json&gt;]
   --create &lt;源文件或文件夹&gt; --output &lt;新文件.exe&gt; --passwords-stdin [--compression zstd|brotli|none] [--layout auto|embedded|detached] [--recovery-percent 0|5|10|20] [--stub &lt;发布版EXE&gt;] [--report &lt;新报告.json&gt;]
-  --verify-recovery &lt;par2文件&gt; [--report &lt;新报告.json&gt;]
-  --repair-recovery &lt;par2文件&gt; [--report &lt;新报告.json&gt;]
+  --verify-recovery &lt;加密包&gt; [--report &lt;新报告.json&gt;]
+  --repair-recovery &lt;加密包&gt; [--report &lt;新报告.json&gt;]
   --export-recovery-source &lt;新文件.tar.xz&gt; [--report &lt;新报告.json&gt;]
   --explorer-menu on|off    在资源管理器右键菜单中添加或移除 2Password。
   --language en|zh-CN    所有操作均可指定语言，包括 --help。
 
 密码仅通过重定向的标准输入提供，使用严格 UTF-8，不自动剥离 BOM。
 创建时输入 JSON 密码数组。解密时保留密码原文，仅移除最后一处标准换行。
-默认：Zstd 压缩、自动打包方式、10% PAR2 恢复记录。
-双文件包的 EXE 与 .2pw 必须放在同一目录，同时保留生成的全部 .par2 文件。
-正常解包采用单次流式认证；检测到损坏时，可用匹配的 PAR2 尝试修复，再重新认证并解包。
---verify-first 会在解包前额外完整校验一次 PAR2 恢复记录。
+默认：Zstd 压缩、自动打包方式、5% PAR2 恢复记录，存在加密包里。
+双文件包的 EXE 与 .2pw 必须放在同一目录，恢复记录在 .2pw 里。
+正常解包采用单次流式认证。发现损坏时，先用恢复记录修复一份副本，再从副本解包，加密包本身不改动。
+--verify-first 会在解包前先用恢复记录完整检查一次加密包。
+--repair-recovery 会把修好的数据块写回加密包。
 已有输出文件或目录不会被覆盖或合并。
-恢复操作退出码：0 = 完整或成功，1 = 可以修复，2 = 恢复记录不足。
+恢复操作退出码：0 = 完整或已修复，1 = 可以修复，2 = 恢复记录不足，4 = 没有可用的恢复记录。
 </value>
   </data>
   <data name="Choose exactly one operation." xml:space="preserve">
@@ -83,9 +84,6 @@
   <data name="Self-extracting output must end in .exe." xml:space="preserve">
     <value>自解密输出文件名必须以 .exe 结尾。</value>
   </data>
-  <data name="The encrypted package was successfully created and kept; the recovery stage or result report did not complete." xml:space="preserve">
-    <value>加密包已成功创建并保留，但恢复记录或结果报告阶段未完成。</value>
-  </data>
   <data name="Unable to write command result." xml:space="preserve">
     <value>无法写入操作结果。</value>
   </data>
@@ -112,9 +110,6 @@
   </data>
   <data name="用 2Password 解密" xml:space="preserve">
     <value>用 2Password 解密</value>
-  </data>
-  <data name="用 2Password 修复" xml:space="preserve">
-    <value>用 2Password 修复</value>
   </data>
   <data name="一次只能放一项" xml:space="preserve">
     <value>一次只能放一项</value>
@@ -164,17 +159,14 @@
   <data name="打开加密包" xml:space="preserve">
     <value>打开加密包</value>
   </data>
-  <data name="2Password 加密包|*.exe;*.2pw;*.par2|所有文件|*.*" xml:space="preserve">
-    <value>2Password 加密包|*.exe;*.2pw;*.par2|所有文件|*.*</value>
+  <data name="2Password 加密包|*.exe;*.2pw|所有文件|*.*" xml:space="preserve">
+    <value>2Password 加密包|*.exe;*.2pw|所有文件|*.*</value>
   </data>
   <data name="拖入文件或文件夹" xml:space="preserve">
     <value>拖入文件或文件夹</value>
   </data>
   <data name="松开，打开加密包" xml:space="preserve">
     <value>松开，打开加密包</value>
-  </data>
-  <data name="松开，检查恢复记录" xml:space="preserve">
-    <value>松开，检查恢复记录</value>
   </data>
   <data name="松开，开始加密" xml:space="preserve">
     <value>松开，开始加密</value>
@@ -194,12 +186,6 @@
   <data name="先选择保存位置。" xml:space="preserve">
     <value>先选择保存位置。</value>
   </data>
-  <data name="正在生成恢复记录" xml:space="preserve">
-    <value>正在生成恢复记录</value>
-  </data>
-  <data name="已取消生成恢复记录" xml:space="preserve">
-    <value>已取消生成恢复记录</value>
-  </data>
   <data name="恢复记录没有生成：{0}" xml:space="preserve">
     <value>恢复记录没有生成：{0}</value>
   </data>
@@ -217,9 +203,6 @@
   </data>
   <data name="确认密码 {0}" xml:space="preserve">
     <value>确认密码 {0}</value>
-  </data>
-  <data name="至少 {0} 个字符" xml:space="preserve">
-    <value>至少 {0} 个字符</value>
   </data>
   <data name="和第 {0} 个密码相同" xml:space="preserve">
     <value>和第 {0} 个密码相同</value>
@@ -257,11 +240,14 @@
   <data name="先选择还原位置。" xml:space="preserve">
     <value>先选择还原位置。</value>
   </data>
-  <data name="选择 PAR2 恢复记录" xml:space="preserve">
-    <value>选择 PAR2 恢复记录</value>
+  <data name="选择要修复的加密包" xml:space="preserve">
+    <value>选择要修复的加密包</value>
   </data>
-  <data name="PAR2 恢复记录 (*.par2)|*.par2" xml:space="preserve">
-    <value>PAR2 恢复记录 (*.par2)|*.par2</value>
+  <data name="恢复记录 {0}" xml:space="preserve">
+    <value>恢复记录 {0}</value>
+  </data>
+  <data name="没有恢复记录" xml:space="preserve">
+    <value>没有恢复记录</value>
   </data>
   <data name="检查" xml:space="preserve">
     <value>检查</value>
@@ -302,6 +288,9 @@
   <data name="{0} 项" xml:space="preserve">
     <value>{0} 项</value>
   </data>
+  <data name="正在生成恢复记录" xml:space="preserve">
+    <value>正在生成恢复记录</value>
+  </data>
   <data name="发现损坏，正在检查" xml:space="preserve">
     <value>发现损坏，正在检查</value>
   </data>
@@ -326,14 +315,8 @@
   <data name="加密完成" xml:space="preserve">
     <value>加密完成</value>
   </data>
-  <data name="恢复记录 · 1 个文件" xml:space="preserve">
-    <value>恢复记录 · 1 个文件</value>
-  </data>
-  <data name="恢复记录 · {0} 个文件" xml:space="preserve">
-    <value>恢复记录 · {0} 个文件</value>
-  </data>
-  <data name="这些文件放在同一个文件夹里" xml:space="preserve">
-    <value>这些文件放在同一个文件夹里</value>
+  <data name="两个文件要放在同一个文件夹里" xml:space="preserve">
+    <value>两个文件要放在同一个文件夹里</value>
   </data>
   <data name="在文件夹中显示" xml:space="preserve">
     <value>在文件夹中显示</value>
@@ -461,14 +444,11 @@
   <data name="单个 EXE 最大 4 GB" xml:space="preserve">
     <value>单个 EXE 最大 4 GB</value>
   </data>
-  <data name="两个文件要放在同一个文件夹里" xml:space="preserve">
-    <value>两个文件要放在同一个文件夹里</value>
-  </data>
   <data name="恢复记录" xml:space="preserve">
     <value>恢复记录</value>
   </data>
-  <data name="额外生成 PAR2 文件，加密包损坏时用来修复" xml:space="preserve">
-    <value>额外生成 PAR2 文件，加密包损坏时用来修复</value>
+  <data name="PAR2 恢复数据存在加密包里，文件损坏时用来修复" xml:space="preserve">
+    <value>PAR2 恢复数据存在加密包里，文件损坏时用来修复</value>
   </data>
   <data name="无" xml:space="preserve">
     <value>无</value>
@@ -490,9 +470,6 @@
   </data>
   <data name="先检查并修复，再解密" xml:space="preserve">
     <value>先检查并修复，再解密</value>
-  </data>
-  <data name="PAR2 恢复记录" xml:space="preserve">
-    <value>PAR2 恢复记录</value>
   </data>
   <data name="进度" xml:space="preserve">
     <value>进度</value>

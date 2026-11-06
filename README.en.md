@@ -12,8 +12,8 @@ Encrypt a file or folder into a single EXE with several passwords. Any one of th
 
 - Up to 16 passwords per package. Each one unlocks everything on its own, and knowing one doesn't reveal the others.
 - The EXE carries its own runtime and opens on any 64-bit Windows 10 or 11 PC.
-- 10% PAR2 recovery data is added by default. If a package gets damaged, decryption repairs it automatically.
-- When the encrypted result is larger than 4 GB, it's split into `Documents.exe` and `Documents.2pw`. Keep the two in the same folder.
+- By default the package stores 5% PAR2 recovery data inside itself, so there are no extra files. If the package is damaged, decryption repairs a copy and decrypts that; the original file is left as it is.
+- When the encrypted result is larger than 4 GB, it's split into `Documents.exe` and `Documents.2pw`, with the recovery data in the `.2pw`. Keep the two in the same folder.
 - Filenames in any language (emoji included), empty folders, timestamps and file attributes come back as they were. Existing files are never overwritten.
 
 ## Download
@@ -35,20 +35,20 @@ The two installers differ only in the setup wizard's language; the app switches 
 
 **Decrypt:** double-click the EXE you received and enter any one of the passwords. If you'd rather not run an EXE someone sent you, drag it into your own copy of 2Password.
 
-**Repair:** drag a `.par2` file into the window and click Check, then Repair if it finds damage.
+**Repair:** choose "Repair a package…" in the ··· menu at the top right, pick the EXE or `.2pw`, and click Check, then Repair if it finds damage. Repair writes the fixed blocks back into the file.
 
 Compression, single EXE versus EXE + `.2pw`, and the amount of recovery data are under Options on the encrypt screen.
 
-**Right-click menu:** turn on "Show in right-click menu" in the ··· menu at the top right. Right-click a file or folder in Explorer and choose "Encrypt with 2Password". `.2pw` and `.par2` files get Decrypt and Repair. On Windows 11 these are under "Show more options".
+**Right-click menu:** turn on "Show in right-click menu" in the ··· menu at the top right. Right-click a file or folder in Explorer and choose "Encrypt with 2Password". `.2pw` files get Decrypt. On Windows 11 these are under "Show more options".
 
 **Administrator rights:** saving or decrypting into a location like Program Files fails with an access-denied message. Click "Retry as administrator" next to it. The chosen files and location carry over; enter the passwords again. The ··· menu also has "Run as administrator".
 
 ## Tips
 
-- Every password opens the whole package by itself, so make each one long. The minimum is 8 characters.
+- Every password opens the whole package by itself. There's no minimum length, so even one character works, but shorter passwords are easier to guess.
 - A package you've sent can't be taken back. To change passwords, encrypt a new copy.
 - Decrypt to an NTFS drive. FAT32 and exFAT USB sticks can carry packages but can't be the decryption destination.
-- Keep `.2pw` and `.par2` files in the same folder as the EXE.
+- Keep the `.2pw` file in the same folder as the EXE.
 - Download OneDrive "online-only" files before encrypting them. Symbolic links and junctions can't be packaged.
 - Turn off "Show in right-click menu" before moving or deleting the portable EXE. Uninstalling the installed version removes the menu entries.
 

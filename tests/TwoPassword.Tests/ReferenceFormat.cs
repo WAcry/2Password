@@ -11,7 +11,7 @@ namespace TwoPassword.Tests;
 
 internal static partial class Program
 {
-    // Independent v2 reference framing implementation. This intentionally uses only
+    // Independent v3 reference framing implementation. This intentionally uses only
     // public crypto/codec libraries and the documented wire format, never core internals.
     private sealed record ReferenceFrame(byte[] Data, int RawLength, PackageCompression Codec);
 
@@ -38,8 +38,8 @@ internal static partial class Program
         long total, int files, int dirs, PackageCompression compression)
     {
         byte[] header = new byte[124];
-        "2PWPKG02"u8.CopyTo(header);
-        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8), 2);
+        "2PWPKG03"u8.CopyTo(header);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8), 3);
         BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(12), 1024 * 1024);
         header[16] = (byte)compression;
         BinaryPrimitives.WriteInt64LittleEndian(header.AsSpan(20), total);
@@ -55,7 +55,7 @@ internal static partial class Program
         using (var wrapper = new AesGcm(_attackWrappingKey!, 16))
             wrapper.Encrypt(header.AsSpan(64, 12), key, header.AsSpan(76, 32), header.AsSpan(108, 16), slotAad);
         using var output = new MemoryStream();
-        WriteReferenceReplicas(output, "2PWHDR02"u8, header);
+        WriteReferenceReplicas(output, "2PWHDR03"u8, header);
         byte[] hash = SHA256.HashData(header);
         ulong frame = 0;
         using (var aes = new AesGcm(key, 16))
@@ -80,7 +80,7 @@ internal static partial class Program
             }
         }
         long length = output.Length;
-        WriteReferenceFooter(output, "2PWTAIL2"u8, 0, length);
+        WriteReferenceFooter(output, "2PWTAIL3"u8, 0, length);
         CryptographicOperations.ZeroMemory(key);
         string path = Path.Combine(_root, "independent-" + Guid.NewGuid().ToString("N") + ".2pw");
         await File.WriteAllBytesAsync(path, output.ToArray());
@@ -97,12 +97,13 @@ internal static partial class Program
         for (int i = 0; i < 3; i++) output.Write(record);
     }
 
-    private static void WriteReferenceFooter(Stream output, ReadOnlySpan<byte> magic, long offset, long length)
+    private static void WriteReferenceFooter(Stream output, ReadOnlySpan<byte> magic, long offset, long length, long recovery = 0)
     {
         byte[] record = new byte[64];
         magic.CopyTo(record);
         BinaryPrimitives.WriteInt64LittleEndian(record.AsSpan(8), offset);
         BinaryPrimitives.WriteInt64LittleEndian(record.AsSpan(16), length);
+        BinaryPrimitives.WriteInt64LittleEndian(record.AsSpan(24), recovery);
         SHA256.HashData(record.AsSpan(0, 32), record.AsSpan(32, 32));
         for (int i = 0; i < 3; i++) output.Write(record);
     }
@@ -116,9 +117,16 @@ internal static partial class Program
     private static async Task<(byte[] Tar, IReadOnlyList<byte> Codecs)> ReferenceDecode(string path)
     {
         byte[] data = await File.ReadAllBytesAsync(path);
-        int headerLength = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(8));
-        byte[] header = data.AsSpan(48, headerLength).ToArray();
-        Assert(header.AsSpan(0, 8).SequenceEqual("2PWPKG02"u8), "Reference decoder expects v2.");
+        var trailer = data.AsSpan(data.Length - FooterRegion, 64);
+        Assert(trailer[..8].SequenceEqual("2PWTAIL3"u8) && SHA256.HashData(trailer[..32]).AsSpan().SequenceEqual(trailer[32..]),
+            "Reference decoder expects an intact first v3 trailer.");
+        int offset = checked((int)BinaryPrimitives.ReadInt64LittleEndian(trailer[8..]));
+        int end = checked(offset + (int)BinaryPrimitives.ReadInt64LittleEndian(trailer[16..]));
+        long recovery = BinaryPrimitives.ReadInt64LittleEndian(trailer[24..]);
+        Assert(end + recovery + FooterRegion == data.Length, "Payload, recovery data and trailer do not cover the file.");
+        int headerLength = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(offset + 8));
+        byte[] header = data.AsSpan(offset + 48, headerLength).ToArray();
+        Assert(header.AsSpan(0, 8).SequenceEqual("2PWPKG03"u8), "Reference decoder expects v3.");
         byte[] password = Encoding.UTF8.GetBytes(PasswordA);
         using var kdf = new Argon2id(password)
         {
@@ -134,7 +142,7 @@ internal static partial class Program
         var codecs = new List<byte>();
         ulong index = 0;
         bool terminal = false;
-        for (int at = HeaderRegion; at < data.Length - FooterRegion;)
+        for (int at = offset + HeaderRegion; at < end;)
         {
             byte[] frameHeader = data.AsSpan(at, 12).ToArray();
             int rawLength = BinaryPrimitives.ReadInt32LittleEndian(frameHeader);
@@ -154,7 +162,7 @@ internal static partial class Program
             index++;
             if (rawLength == 0)
             {
-                Assert(encodedLength == 0 && codec == 0 && at == data.Length - FooterRegion,
+                Assert(encodedLength == 0 && codec == 0 && at == end,
                     "Independent terminal/boundary mismatch.");
                 terminal = true;
                 break;

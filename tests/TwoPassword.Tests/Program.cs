@@ -91,6 +91,7 @@ internal static partial class Program
         await Run("Brotli compression restores exact Unicode tree and hashes", CompressedRoundTrip);
         await Run("Zstd independent blocks restore exact data with incompressible fallback", ZstdRoundTrip);
         await Run("Sixteen-password boundary accepts the final independent password", SixteenPasswords);
+        await Run("One-character passwords are accepted and stay distinct", OneCharacterPasswords);
         await Run("Single-file source preserves original filename and exact bytes", SingleFileRoundTrip);
         await Run("Empty source directory survives a round trip", EmptyDirectoryRoundTrip);
         await Run("Composed and decomposed Unicode passwords remain distinct", UnicodePasswordNormalization);
@@ -355,6 +356,21 @@ internal static partial class Program
         await PackageService.ExtractAsync(new(package, output, passwords[^1]));
         Assert(File.ReadAllText(Path.Combine(output, Path.GetFileName(source))) == File.ReadAllText(source),
             "The final password slot did not restore data.");
+    }
+
+    private static async Task OneCharacterPasswords()
+    {
+        string source = Path.Combine(_root, "one-character.txt");
+        File.WriteAllText(source, "Password length is the user's choice.");
+        string package = Path.Combine(_root, "one-character.2pw");
+        await PackageService.CreateAsync(new(source, package, ["x", "密"]));
+        foreach (string password in new[] { "x", "密" })
+        {
+            string output = Path.Combine(_root, "one-character-output-" + (int)password[0]);
+            await PackageService.ExtractAsync(new(package, output, password));
+            Assert(File.ReadAllText(Path.Combine(output, Path.GetFileName(source))) == File.ReadAllText(source), "A one-character password did not restore data.");
+        }
+        await ExpectExtractFailure(package, "X");
     }
 
     private static async Task EmptyDirectoryRoundTrip()

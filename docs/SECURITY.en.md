@@ -50,7 +50,7 @@ The nonce combines a random prefix with an increasing 64-bit record number; ever
 
 Raw and encoded lengths are bounded before processing. Decompression writes into caller-allocated buffers rather than allocating memory according to attacker-controlled frame declarations. Zstd must contain exactly one standard frame, use no external dictionary, have a window no larger than 1 MiB, and declare exactly the authenticated raw size. Brotli must consume the entire encoded block and produce exactly the declared number of bytes. Additional compressed frames, trailing bytes, and size mismatches are rejected.
 
-The logical key-slot/container header has three fixed-size physical replicas. The locating footer also has three replicas. Each copy has a SHA-256 checksum. Damaged copies are ignored, and valid copies must agree. The checksums only pick an intact replica; AES-GCM authentication decides whether the content is genuine. If every replica is damaged, PAR2 or an original backup is needed. File-level directory information is inside the authenticated PAX stream and is additionally covered by optional PAR2.
+The logical key-slot/container header has three fixed-size physical replicas. The locating footer also has three replicas. Each copy has a SHA-256 checksum. Damaged copies are ignored, and valid copies must agree. The checksums only pick an intact replica; AES-GCM authentication decides whether the content is genuine. If every header replica is damaged, the recovery data or an original backup is needed. File-level directory information is inside the authenticated PAX stream and is additionally covered by the recovery data.
 
 A dedicated authenticated zero-length final record is mandatory. Extraction validates this record, exact payload boundaries, and the actual end of the file before publishing output.
 
@@ -58,7 +58,7 @@ Each block is authenticated before its plaintext reaches decompression and archi
 
 The visible header reveals the format version, password-slot count, compression selection, file/directory counts, and declared aggregate byte count. Physical file size is also visible. Filenames, directory names, and file contents are encrypted. `Inspect` reads format information only; it checks neither the password nor the content.
 
-The outer EXE, `.2pw`, and PAR2 filenames are also visible. The GUI suggests an output name based on the source name, so encryption of names inside the archive does not conceal the chosen package filename. Choose a neutral output name when that label is sensitive.
+The outer EXE and `.2pw` filenames are also visible. The GUI suggests an output name based on the source name, so encryption of names inside the archive does not conceal the chosen package filename. Choose a neutral output name when that label is sensitive.
 
 ## Paths, encoding, and source consistency
 
@@ -86,7 +86,7 @@ During creation, the archive/compression stream goes directly into encryption wi
 
 Extraction creates a private staging directory whose ACL permits the current user and SYSTEM. Only after all authentication, path, and length checks pass is it renamed to a new destination without overwriting. A destination that already exists, or is created concurrently, causes failure and is preserved.
 
-Staging directories and PAR2 workspaces require a filesystem with persistent ACL support. The application queries volume capabilities through an actual file handle, atomically supplies a protected DACL at creation, and reads it back to verify the current user owns the directory and only that user and SYSTEM receive inheritable full control. Existing paths are neither reused nor given new permissions. FAT/exFAT destinations without persistent ACLs, providers whose capabilities cannot be queried, and directories whose strict permissions cannot be verified cause an error. Use local NTFS for extraction destinations and recovery workspaces.
+Staging directories and recovery workspaces require a filesystem with persistent ACL support. The application queries volume capabilities through an actual file handle, atomically supplies a protected DACL at creation, and reads it back to verify the current user owns the directory and only that user and SYSTEM receive inheritable full control. Existing paths are neither reused nor given new permissions. FAT/exFAT destinations without persistent ACLs, providers whose capabilities cannot be queried, and directories whose strict permissions cannot be verified cause an error. Use local NTFS for extraction destinations and recovery workspaces. If the recovery workspace can't be created during encryption (for example when the output is on exFAT), the package is still written, without recovery data, and the app says so.
 
 Named-stream support is also checked against the actual volume capabilities. A provider's corresponding unsupported-enumeration error is treated as absence of alternate streams only when the volume explicitly lacks named-stream support. A failed capability query is treated as an error.
 
@@ -112,19 +112,25 @@ Windows blocks drag and drop from normal-rights programs into elevated windows. 
 
 The right-click menu writes only to the current user's `HKCU\Software\Classes`, and its commands point at the running executable. Turning it off removes only entries that point at this executable. Uninstalling the installed version does the same cleanup.
 
-## PAR2 recovery and processing order
+## PAR2 recovery data
 
-PAR2 recovery data is generated over already encrypted EXE/data files. It does not access original plaintext and needs no password. Index and recovery volumes repeat locating information, file descriptions, and slice checksums; intact volumes can supply this metadata if the index is missing or damaged.
+par2cmdline-turbo generates the recovery data from the encrypted data. It never sees plaintext and needs no password. The recovery data lives in the same file as the encrypted data: a single EXE is `[program][encrypted data][recovery data][trailer]`, and the `.2pw` of a two-file package is `[encrypted data][recovery data][trailer]`. The three trailer copies record where the encrypted data starts, its length and the recovery data's length. The program part of the EXE is not covered; if it is damaged, open the EXE with another copy of 2Password.
 
-Normal extraction uses one authenticated streaming pass without an additional full-file prescan. A password that matches no slot fails directly without launching PAR2. When container, data, or archive validation detects damage and recovery records exist, the application verifies and attempts repair on copies of the encrypted input. Successful repair is followed by a new complete authenticated extraction. Staging plaintext from the failed attempt is cleaned up, and a destination is published only after the retry succeeds. Every block is authenticated before decompression.
+The three trailer copies sit next to each other in the last 192 bytes, so one bad sector or a truncated file loses all of them. The app then scans the whole file instead. It finds a header copy that passes its checksum, then a FileDesc packet in the recovery data that records the length of the encrypted data. The three header copies are identical, which leaves three possible starting points; the block checksums in the recovery data pick the right one. Checking then reports a damaged trailer, and repair restores any damaged blocks and writes a new trailer. A truncated file can be repaired only if enough recovery blocks remain; a cut into the encrypted data can't be repaired. In a single EXE, if all three header copies are lost along with the trailer, the data can't be located either.
 
-Users can explicitly request verification before extraction or use the separate verification/repair operation. Independent compression keeps damage confined to the affected block, and PAR2 recovery blocks reconstruct the missing data.
+A single EXE with a destroyed trailer opens as a plain copy of 2Password when double-clicked, and dragging it into a window doesn't recognize it. Select it with "Repair a package…" in another copy of 2Password; once repaired it works normally again.
 
-Recovery capacity is measured in affected slices: 10% redundancy repairs roughly 10% of the slices. Small errors spread across many slices can use up the recovery blocks, and missing or damaged recovery volumes reduce capacity too. Safety preflight excludes an entire volume unless all its packets validate; partially checked files are not passed to the native program.
+The parameters are par2cmdline-turbo's defaults: a block size of about 1/2000 of the encrypted data, rounded to a multiple of 4 bytes, with memory and thread count left to par2. Redundancy is 5% by default, with 10% and 20% as options. Capacity is counted in damaged blocks, so 5% redundancy repairs roughly 5% of the blocks. A few errors spread across many blocks can still use up the recovery blocks.
 
-Before recovery, the wrapper validates packet boundaries and MD5 values, recovery-set IDs, file IDs, filenames, and the protected file set. Only the selected EXE and its data companion, or one data file, are permitted. Traversal, alternate-stream names, reserved names, case aliases, conflicting descriptions, and Unicode filename-override extensions are rejected. Staged copies are validated again in a restricted workspace, and only validated copies may be discovered by the native tool. Repairs happen on copies; reconstructed output must pass independent length and digest checks before commit. Damaged originals are backed up.
+When reading the recovery data, the app checks each PAR2 packet's length and MD5. A damaged packet is skipped and scanning resumes at the next packet marker, so one damaged spot costs one packet. Only packets that describe this encrypted data reach the native tool: the file name must be `payload`, the length, block size and file ID must match, and there must be exactly one recovery set. Creator packets and other packet types are dropped. Conflicting metadata is an error.
 
-PAR2's MD5 only detects damage; protection against tampering comes from AES-GCM. A repaired payload still has to pass AES-GCM authentication, and the application never runs a reconstructed EXE automatically. Current recovery bounds are two protected input files, 128 recovery files, 32,768 source slices, 64 MiB per slice, and 2 TiB of protected data. These differ from the encrypted-container size limits.
+Checking doesn't run the native tool. The app hashes the encrypted data block by block and compares the MD5 values with the checksum table in the recovery data to count damaged blocks.
+
+To repair, the app copies the encrypted data and the filtered recovery data into a restricted workspace, and par2 rebuilds the copy. The rebuilt data is checked against every block checksum and the whole-file MD5, and then only the damaged blocks are written back into the original file. Other processes can only read the file while the repair runs.
+
+Normal extraction uses one authenticated streaming pass. A password that matches no slot fails directly and never starts a repair. When container, data or archive validation finds damage and the package has recovery data, the app repairs a copy in a workspace next to the destination and runs a complete extraction from that copy. The original file is not changed, and plaintext staged by the first attempt is cleaned up. With "Check and repair before decrypting" selected, the whole package is checked before extraction. Every block is authenticated before decompression.
+
+PAR2's MD5 only detects damage; protection against tampering comes from AES-GCM. Rebuilt data still has to pass AES-GCM authentication, and the app never runs a rebuilt EXE.
 
 ## Verification and review
 

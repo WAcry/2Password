@@ -1,6 +1,6 @@
-# 2Password core — format v2
+# 2Password core: format v3
 
-This document describes the implementation in `TwoPassword.Core`. The application writes and reads **v2**. Earlier in-development v1 fixtures are intentionally unsupported; no released user containers use v1.
+This document describes the implementation in `TwoPassword.Core`. The application writes and reads **v3**. v3 stores PAR2 recovery data inside the package. Earlier in-development v1 and v2 files are not supported.
 
 ## Dependencies and data flow
 
@@ -10,9 +10,9 @@ This document describes the implementation in `TwoPassword.Core`. The applicatio
 - Independent block compression: `ZstdSharp.Port` 0.8.8 (Zstandard 1.5.7 implementation) or .NET Brotli. Default: Zstd.
 - Windows paths, streams, timestamps, ACLs: .NET filesystem APIs and documented Windows APIs for volume capabilities, atomic directory creation and stream enumeration.
 
-Creation streams file data into PAX TAR, fills at most a 1 MiB plaintext block, optionally compresses that block, and encrypts it. No plaintext intermediate TAR file is written. A completed **encrypted** temporary payload is used to decide between an embedded EXE and a detached dataset.
+Creation streams file data into PAX TAR, fills at most a 1 MiB plaintext block, optionally compresses that block, and encrypts it. No plaintext intermediate TAR file is written. The completed **encrypted** temporary payload is handed to the optional recovery writer, and the payload plus recovery length decides between an embedded EXE and a detached dataset.
 
-Decoding reverses those operations one authenticated block at a time. The normal application path authenticates and extracts first, so intact data requires one read pass. On a damage-related failure, the recovery layer can verify and repair with PAR2, then retry authentication and extraction. An explicit verify-first option is available when a prior full PAR2 check is desired. Invalid password syntax is rejected before recovery work; a password unrecognized by every key slot is reported separately and does not automatically trigger an expensive scan. Incorrect passwords remain indistinguishable from damaged key data, so a user who suspects key-data damage can request an explicit recovery check. The core performs no opportunistic partial extraction: a destination is published only after the complete archive and authenticated terminal block validate.
+Decoding reverses those operations one authenticated block at a time. The normal application path authenticates and extracts first, so intact data requires one read pass. On a damage-related failure, the recovery layer repairs a private copy of the payload with the embedded PAR2 data and extracts from that copy. An explicit verify-first option checks the whole payload against the recovery data first. Invalid password syntax is rejected before recovery work; a password unrecognized by every key slot is reported separately and does not automatically trigger an expensive scan. Incorrect passwords remain indistinguishable from damaged key data, so a user who suspects key-data damage can request an explicit recovery check. The core performs no opportunistic partial extraction: a destination is published only after the complete archive and authenticated terminal block validate.
 
 ## Independent passwords
 
@@ -34,8 +34,8 @@ All integers below are little-endian unless explicitly specified otherwise.
 
 | Offset | Bytes | Value |
 |---:|---:|---|
-| 0 | 8 | ASCII `2PWPKG02` |
-| 8 | 4 | Version = 2 |
+| 0 | 8 | ASCII `2PWPKG03` |
+| 8 | 4 | Version = 3 |
 | 12 | 4 | Raw chunk size = 1,048,576 |
 | 16 | 1 | Requested codec: 0 = none, 1 = Brotli, 2 = Zstd |
 | 17 | 3 | Reserved, zero |
@@ -57,7 +57,7 @@ The payload starts with three identical 2048-byte records: a fixed 6144-byte reg
 
 | Offset | Bytes | Value |
 |---:|---:|---|
-| 0 | 8 | ASCII `2PWHDR02` |
+| 0 | 8 | ASCII `2PWHDR03` |
 | 8 | 4 | Logical header length |
 | 12 | 4 | Reserved, zero |
 | 16 | 32 | SHA-256 of the logical header |
@@ -103,27 +103,62 @@ The physical file ends with three 64-byte footer records (192 bytes total):
 
 | Offset | Bytes | Value |
 |---:|---:|---|
-| 0 | 8 | ASCII `2PWTAIL2` |
+| 0 | 8 | ASCII `2PWTAIL3` |
 | 8 | 8 | Payload start offset |
-| 16 | 8 | Payload length, excluding the footer region |
-| 24 | 8 | Reserved, zero |
+| 16 | 8 | Payload length: header replicas and blocks |
+| 24 | 8 | Recovery data length, zero when absent |
 | 32 | 32 | SHA-256 of the preceding 32 bytes |
 
-The common payload end must equal file length minus 192. At least one checksum-valid record must remain; conflicting valid records fail closed. The last authenticated block must end exactly at that payload end. Embedded EXEs use the stub length as the payload offset; raw `.2pw` datasets use offset zero.
+Payload offset + payload length + recovery length + 192 must equal the file length. At least one checksum-valid record must remain; conflicting valid records fail closed. The last authenticated block must end exactly at the payload end. Embedded EXEs use the stub length as the payload offset; raw `.2pw` datasets use offset zero. The physical layouts are:
 
-Redundancy tolerates damage to up to two header copies and up to two footer copies. It does not reconstruct corrupted ciphertext. PAR2 supplies separate data-repair redundancy.
+- Embedded EXE: `[stub][payload][recovery][footer]`.
+- Dataset (`.2pw` or raw container): `[payload][recovery][footer]`.
+
+Redundancy tolerates damage to up to two header copies and up to two footer copies. It does not reconstruct corrupted ciphertext; the recovery region does. When all footer copies are lost, the recovery layer can still find the regions; see [Lost footer](#lost-footer).
+
+## Embedded recovery data
+
+The recovery region is the concatenation of the PAR2 files that par2cmdline-turbo 1.5.0 writes for one source file named `payload` whose bytes are exactly the payload. The files are concatenated in ordinal filename order, so the index comes first. Creation runs `par2 c -r<percent> -B<work> -- <work>\payload.par2 <work>\payload` with no other options, which keeps par2's defaults:
+
+- Block size: about 2000 source blocks, `roundup4(max(ceil(S / 2000), 4))` for payload length `S`.
+- Recovery files of doubling size, with the critical packets repeated in each file.
+- Memory and thread count chosen by par2.
+
+Redundancy is 5% by default; the GUI and CLI also offer 10%, 20% and off. Because the critical packets repeat, small payloads carry a fixed overhead: a 5 MiB payload gets about 1.4 MB of recovery data at 5%. The concatenated output passes the same validator used for repair before it is accepted. If generation fails (for example on a volume without persistent ACLs), the package is published without recovery data and the error is reported. Cancellation cancels the whole creation.
+
+Readers never trust the region's structure. `Par2Metadata` scans it packet by packet and accepts only these packet types, each with its exact expected length: Main (92 bytes), FileDesc (128), IFSC (80 + 20 × slices), RecvSlic (68 + block size) and Creator (68 to 1088). A packet with a bad header is skipped by searching for the next `PAR2\0PKT` marker; a packet whose MD5 fails is skipped from 8 bytes past its start. Total hashing is bounded by twice the region length plus 64 MiB. Validation then requires:
+
+- exactly one recovery set whose Main packet hashes to its set ID, with the default block size and one file;
+- one FileDesc for that file ID with the name `payload`, the payload length and a matching FileID hash;
+- exactly one IFSC table;
+- RecvSlic exponents below 65535, deduplicated. Creator packets are dropped.
+
+Checking hashes the payload slice by slice (the last slice zero-padded to the block size) and compares the MD5 values with the IFSC table. Exit codes: 0 intact, 1 repairable, 2 not enough recovery blocks, 4 no usable recovery data.
+
+Repair opens the data file for writing with `FileShare.Read`, copies the payload into a private workspace and writes only the validated packets, each rechecked while copied, as `payload.par2`. It runs `par2 r -B<work> -- <work>\payload.par2`, checks every slice and the whole-payload MD5, and then writes back only the damaged slices in place. Damage-triggered extraction repairs a copy in a workspace beside the destination, frames it as a raw dataset with footer `(0, length, 0)` and extracts from it; the package file is not modified.
+
+### Lost footer
+
+The three footer records are adjacent, so one bad sector or a truncated file removes all of them, and the footer is outside PAR2 coverage. When `LocateRegions` fails with a `PackageException`, the recovery layer rebuilds the regions from the file itself:
+
+1. Candidate payload starts. A launcher whose `2PWLINK2` footer still verifies points at its dataset, which starts at 0. Otherwise `FindHeader` scans forward for `2PWHDR03` and returns the first record whose length, reserved field, SHA-256 and zero padding all check out; an EXE stub can contain the magic as a constant, so the magic alone is not enough. The three replicas are identical and carry no index, so a hit at `h` gives the starts `h`, `h − 2048` and `h − 4096` that are not negative. With no valid record the only candidate is 0.
+2. Payload length. `FindSourceLength` searches backwards from the end of the file for a FileDesc packet that passes its MD5, names `payload` and has a matching FileID. par2 repeats it in every recovery file, so copies sit close to the end.
+3. Recovery set. `Par2Metadata.Read` runs over `[lowest start + length, end of file)` and records where the last intact packet of the set ends. Up to 4096 leading payload bytes are skipped by marker resync.
+4. Start. For each candidate, up to 16 slices (as few as 2 once slices exceed 4 MiB), spread from past the header replicas to the last slice, are hashed against the IFSC table; all-zero slices are skipped. The start with the most matches wins and needs at least one. The recovery length runs from the payload end to the end of the last intact packet.
+
+Checking then reports exit code 1 even with an intact payload. Repair restores damaged slices first, cuts the file after the last intact packet and writes a new footer for the rebuilt regions. Extraction from a file with a lost footer copies the payload into the workspace (repairing it when needed) and extracts from the copy. A file cut inside its payload has no PAR2 data left and fails as before. The app detects embedded EXEs by the footer magic, so an EXE with all three magics gone opens as a plain 2Password; repair it from another copy.
 
 ## Automatic and detached layouts
 
 `CreateOptions.Layout` supports:
 
-- `Auto`: embed the completed payload when stub + payload length is at most 4,294,967,295 bytes; otherwise create a small EXE and a sibling `.2pw` dataset.
+- `Auto`: embed the completed payload when stub + payload + recovery + footer is at most 4,294,967,295 bytes; otherwise create a small EXE and a sibling `.2pw` dataset.
 - `Embedded`: require a single EXE within that limit.
 - `Detached`: always create a small EXE and a sibling `.2pw` dataset.
 
 Detached layouts require a caller-supplied self-contained decoder stub. No-stub `Auto` creation writes a raw container. The GUI uses its own published standalone executable as the stub.
 
-A detached EXE contains only its decoder stub and a reference descriptor. The descriptor is stored as three 2048-byte replicas plus three 64-byte footer records, giving **6336 bytes** of reference overhead. The sibling dataset carries the complete normal v2 envelope at offset zero.
+A detached EXE contains only its decoder stub and a reference descriptor. The descriptor is stored as three 2048-byte replicas plus three 64-byte footer records, giving **6336 bytes** of reference overhead. The sibling dataset carries the complete normal v3 envelope at offset zero, including its recovery data, so a detached package is always exactly two files.
 
 Logical reference descriptor:
 
@@ -135,7 +170,7 @@ Logical reference descriptor:
 | 16 | 32 | Expected dataset logical-header SHA-256 |
 | 48 | variable | Strict UTF-8 sibling filename |
 
-Reference-record magic is `2PWLHDR2`; reference-footer magic is `2PWLINK2`. Other record/checksum layouts are identical to those above. A reference footer points to the 6144-byte descriptor region.
+Reference-record magic is `2PWLHDR2`; reference-footer magic is `2PWLINK2`. Other record/checksum layouts are identical to those above. A reference footer points to the 6144-byte descriptor region, and its recovery length must be zero.
 
 The filename must be a single valid Windows filename ending in `.2pw`, at most 255 UTF-16 code units and 1024 UTF-8 bytes. Absolute paths, separators, traversal, device names, ADS syntax, invalid Unicode and reparse-point parents are rejected. The reader checks the expected header hash before attempting password derivation. References cannot chain recursively. A dataset can also be opened directly without its launcher.
 
@@ -162,7 +197,7 @@ Source scanning includes all entries and fails on inaccessible entries. Files ar
 
 Extraction rejects traversal, absolute paths, invalid/device names, duplicate paths, case-insensitive collisions, missing parents, unsupported types, oversized metadata and inconsistent authenticated totals. It creates only new files beneath a private random staging directory in the destination's parent, authenticates the whole stream, restores metadata, then performs a no-overwrite directory rename.
 
-Before creating staging, the shared `WindowsPrivateDirectory` helper opens the existing parent and requires its actual volume to report `FILE_PERSISTENT_ACLS`. An unavailable capability query or a volume without persistent ACLs fails before any plaintext files are written. Native `CreateDirectoryW` supplies the protected DACL atomically and rejects an existing path. The helper reads back the raw security descriptor and requires the current user as owner, a protected present DACL, and exactly the distinct current-user/SYSTEM Allow FullControl ACEs with object/container inheritance and no additional ACEs. A validation failure attempts to remove only the newly created empty directory, never an unexpected tree. PAR2 workspaces use the same helper.
+Before creating staging, the shared `WindowsPrivateDirectory` helper opens the existing parent and requires its actual volume to report `FILE_PERSISTENT_ACLS`. An unavailable capability query or a volume without persistent ACLs fails before any plaintext files are written. Native `CreateDirectoryW` supplies the protected DACL atomically and rejects an existing path. The helper reads back the raw security descriptor and requires the current user as owner, a protected present DACL, and exactly the distinct current-user/SYSTEM Allow FullControl ACEs with object/container inheritance and no additional ACEs. A validation failure attempts to remove only the newly created empty directory, never an unexpected tree. Recovery workspaces use the same helper.
 
 Local NTFS is the validated destination. FAT32 and exFAT cannot be extraction or recovery workspace destinations because they lack persistent ACLs. A network filesystem is accepted only if its provider can report the required capability and preserve the exact verified DACL. Source stream enumeration treats EOF normally, but errors 1/50/87 are considered absence of stream support only after a successful volume query confirms that `FILE_NAMED_STREAMS` is absent. A query failure or a provider claiming streams but refusing enumeration fails explicitly. These checks use the documented [volume capability flags](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getvolumeinformationbyhandlew).
 
@@ -175,8 +210,8 @@ The staging/final directory retains that private ACL. Original ACLs, owners, EFS
 - Entry count: at most 1,000,000, subject to the metadata budget below.
 - Windows full/relative paths: fewer than 32,700 UTF-16 code units; components at most 255.
 - Conservative retained metadata budget: 128 MiB per source inventory (before/after may coexist), and 256 MiB for extraction. Pending directory enumeration is charged before being retained. Exceeding the budget fails explicitly.
-- Self-contained EXE maximum: 4,294,967,295 bytes. Large encrypted data uses detached layout.
-- Encoding, encryption, decoding, copying and hashing are streamed. Temporary payloads are encrypted. Embedded assembly requires a second encrypted copy temporarily.
+- Self-contained EXE maximum: 4,294,967,295 bytes, recovery data included. Large encrypted data uses detached layout.
+- Encoding, encryption, decoding, copying and hashing are streamed. Temporary payloads are encrypted. Embedded assembly requires a second encrypted copy temporarily, and recovery generation a temporary recovery file.
 - Destination files/directories are never overwritten.
 - Normal failure/cancellation cleans temporary output with ordinary deletion. Forced process termination or power loss can leave a private staging directory or encrypted temporary file.
 - A compromised same-user process, malicious EXE stub, keylogger, memory dump or replaced executable is outside the data-encryption threat model. AEAD authenticates the encrypted dataset only; trust in the executable stub comes from signing and distribution.

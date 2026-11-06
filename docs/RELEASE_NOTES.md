@@ -5,7 +5,7 @@
 把文件或文件夹加密成一个 EXE，设 1 到 16 个密码，任意一个都能打开。收到的人双击就能解密，不用装任何软件。
 
 - 每个密码都能单独解开全部内容，知道一个推不出其他的。
-- 默认附带 10% 的 PAR2 恢复记录，加密包损坏时，解密会自动修复。
+- 默认附带 5% 的 PAR2 恢复记录，存在加密包里，不另外生成文件。加密包损坏时，解密会自动修复；文件尾部损坏或被截断也能修。
 - 加密后超过 4 GB 时，拆成 EXE 和同目录的 `.2pw` 两个文件。
 - 文件名、空文件夹、时间和属性原样还原，已有文件不会被覆盖。
 - 可以加到资源管理器右键菜单，右键文件或文件夹直接加密。
@@ -21,7 +21,7 @@
 Encrypt a file or folder into a single EXE with 1 to 16 passwords. Any one of them opens it. The recipient double-clicks the EXE to decrypt, with nothing to install.
 
 - Each password unlocks everything on its own, and knowing one doesn't reveal the others.
-- 10% PAR2 recovery data is added by default, and decryption repairs a damaged package automatically.
+- 5% PAR2 recovery data is stored inside the package by default, with no extra file. Decryption repairs a damaged package automatically, including a damaged or truncated end of file.
 - Encrypted results larger than 4 GB are split into an EXE and a `.2pw` file in the same folder.
 - Filenames, empty folders, timestamps and attributes come back as they were. Existing files are never overwritten.
 - Optional Explorer right-click menu: right-click a file or folder to encrypt it.

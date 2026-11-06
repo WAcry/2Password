@@ -32,7 +32,7 @@ internal static class UiXamlKeys
         ["Ui.SingleExeTip"] = "单个 EXE 最大 4 GB",
         ["Ui.DetachedTip"] = "两个文件要放在同一个文件夹里",
         ["Ui.Recovery"] = "恢复记录",
-        ["Ui.RecoveryTip"] = "额外生成 PAR2 文件，加密包损坏时用来修复",
+        ["Ui.RecoveryTip"] = "PAR2 恢复数据存在加密包里，文件损坏时用来修复",
         ["Ui.Off"] = "无",
         ["Ui.Encrypt"] = "加密",
         ["Ui.Reload"] = "重新读取",
@@ -40,7 +40,6 @@ internal static class UiXamlKeys
         ["Ui.Decrypt"] = "解密",
         ["Ui.RestoreTo"] = "还原到",
         ["Ui.VerifyFirst"] = "先检查并修复，再解密",
-        ["Ui.RecoveryFile"] = "PAR2 恢复记录",
         ["Ui.Progress"] = "进度",
         ["Ui.Cancel"] = "取消",
     };

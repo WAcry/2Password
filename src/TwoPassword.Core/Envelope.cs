@@ -11,9 +11,10 @@ internal sealed class Envelope
     internal const int MaxEntries = 1_000_000;
     internal const long MaxBytes = 16L * 1024 * 1024 * 1024 * 1024;
     internal const int FooterSize = RedundantStorage.FooterRegionSize;
-    internal static readonly byte[] Magic = "2PWPKG02"u8.ToArray();
-    internal static readonly byte[] TailMagic = "2PWTAIL2"u8.ToArray();
-    internal static readonly byte[] HeaderReplicaMagic = "2PWHDR02"u8.ToArray();
+    internal const int FormatVersion = 3;
+    internal static readonly byte[] Magic = "2PWPKG03"u8.ToArray();
+    internal static readonly byte[] TailMagic = "2PWTAIL3"u8.ToArray();
+    internal static readonly byte[] HeaderReplicaMagic = "2PWHDR03"u8.ToArray();
     internal static readonly UTF8Encoding Utf8 = new(false, true);
     internal readonly byte[] Header;
     internal readonly byte[] Hash;
@@ -25,10 +26,14 @@ internal sealed class Envelope
     internal readonly int Slots;
     internal readonly long Offset;
     internal readonly long PayloadEnd;
+    internal readonly long RecoveryLength;
 
     private const int FixedHeaderSize = 48;
     private const int SlotSize = 76;
-    private Envelope(byte[] header, long offset, long end)
+    internal const int MinimumFrameSize = 28;
+    internal const int MinimumHeaderSize = FixedHeaderSize + SlotSize;
+    internal const int MaximumHeaderSize = FixedHeaderSize + 16 * SlotSize;
+    private Envelope(byte[] header, long offset, long end, long recoveryLength)
     {
         Header = header;
         Hash = SHA256.HashData(header);
@@ -40,6 +45,7 @@ internal sealed class Envelope
         Slots = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(40));
         Offset = offset;
         PayloadEnd = end;
+        RecoveryLength = recoveryLength;
     }
 
     internal static byte[] PasswordBytes(string password)
@@ -57,7 +63,7 @@ internal sealed class Envelope
         if (compression is not PackageCompression.None and not PackageCompression.Brotli and not PackageCompression.Zstd) throw new PackageException(Text.Get("不支持的压缩选项。"));
         var header = new byte[FixedHeaderSize + passwords.Count * SlotSize];
         Magic.CopyTo(header, 0);
-        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8), 2);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8), FormatVersion);
         BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(12), ChunkSize);
         header[16] = (byte)compression;
         BinaryPrimitives.WriteInt64LittleEndian(header.AsSpan(20), total);
@@ -88,7 +94,7 @@ internal sealed class Envelope
                     if (kek is not null) CryptographicOperations.ZeroMemory(kek);
                 }
             }
-            return new Envelope(header, 0, 0);
+            return new Envelope(header, 0, 0, 0);
         }
         catch
         {
@@ -146,8 +152,8 @@ internal sealed class Envelope
     internal void WriteHeader(Stream destination) =>
         RedundantStorage.WriteHeader(destination, HeaderReplicaMagic, Header);
 
-    internal static void WriteFooter(Stream destination, long offset, long length) =>
-        RedundantStorage.WriteFooter(destination, TailMagic, offset, length);
+    internal static void WriteFooter(Stream destination, long offset, long length, long recoveryLength) =>
+        RedundantStorage.WriteFooter(destination, TailMagic, offset, length, recoveryLength);
 
     internal static bool HasFooter(string path)
     {
@@ -157,14 +163,14 @@ internal sealed class Envelope
 
     internal static Envelope Read(FileStream source)
     {
-        if (source.Length < FooterSize + RedundantStorage.HeaderRegionSize + 28)
-            throw new PackageException(Text.Get("不是有效的 2Password v2 加密包，或文件被截断。"));
+        if (source.Length < FooterSize + RedundantStorage.HeaderRegionSize + MinimumFrameSize)
+            throw new PackageException(Text.Get("不是有效的 2Password 加密包，或文件被截断。"));
         var footer = RedundantStorage.ReadFooter(source, TailMagic);
-        if (footer.Length < RedundantStorage.HeaderRegionSize + 28)
+        if (footer.Length < RedundantStorage.HeaderRegionSize + MinimumFrameSize)
             throw new PackageException(Text.Get("加密包长度无效。"));
         source.Position = footer.Offset;
-        byte[] header = RedundantStorage.ReadHeader(source, HeaderReplicaMagic, FixedHeaderSize + SlotSize, FixedHeaderSize + 16 * SlotSize);
-        if (!header.AsSpan(0, 8).SequenceEqual(Magic) || BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(8)) != 2 ||
+        byte[] header = RedundantStorage.ReadHeader(source, HeaderReplicaMagic, MinimumHeaderSize, MaximumHeaderSize);
+        if (!header.AsSpan(0, 8).SequenceEqual(Magic) || BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(8)) != FormatVersion ||
             BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(12)) != ChunkSize ||
             header[16] > 2 || header[17] != 0 || header[18] != 0 || header[19] != 0 ||
             BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(44)) != 0)
@@ -177,7 +183,7 @@ internal sealed class Envelope
             files < 0 || dirs < 0 || (long)files + dirs is < 1 or > MaxEntries ||
             total < 0 || total > MaxBytes)
             throw new PackageException(Text.Get("加密包声明的文件数量或数据大小无效。"));
-        return new Envelope(header, footer.Offset, footer.End);
+        return new Envelope(header, footer.Offset, footer.Offset + footer.Length, footer.Trailing);
     }
 }
 

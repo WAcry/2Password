@@ -24,8 +24,38 @@ public static class PackageService
             cancellationToken.ThrowIfCancellationRequested();
             using var resolved = ResolvedPackage.Open(path);
             var info = resolved.Envelope;
-            return new PackageInfo(info.Slots, info.Compression, info.PayloadEnd - info.Offset, resolved.DataPath, resolved.IsDetached);
+            return new PackageInfo(info.Slots, info.Compression, info.PayloadEnd - info.Offset, resolved.DataPath, resolved.IsDetached, info.RecoveryLength);
         }, cancellationToken);
+
+    /// <summary>Reads only the redundant trailer, so it still works when the header or the encrypted blocks are damaged.</summary>
+    public static PackageRegions LocateRegions(string path) => ResolvedPackage.Locate(path);
+
+    public static PayloadCandidates FindPayloadCandidates(string path, CancellationToken cancellationToken = default) =>
+        ResolvedPackage.Candidates(path, cancellationToken);
+
+    /// <summary>Cuts <paramref name="file"/> right after the recovery data and writes a new trailer for these regions.</summary>
+    public static void RewriteTrailer(FileStream file, PackageRegions regions)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(regions);
+        long end = regions.RecoveryOffset + regions.RecoveryLength;
+        if (regions.PayloadOffset < 0 || regions.PayloadLength < 0 || regions.RecoveryLength < 0 || end > file.Length)
+            throw new ArgumentOutOfRangeException(nameof(regions));
+        file.SetLength(end);
+        file.Position = end;
+        Envelope.WriteFooter(file, regions.PayloadOffset, regions.PayloadLength, regions.RecoveryLength);
+        file.Flush(flushToDisk: true);
+    }
+
+    /// <summary>Appends a trailer that frames the whole file as a payload without recovery data.</summary>
+    public static void FramePayload(string path)
+    {
+        using var file = new FileStream(SafePaths.Extended(path), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        long length = file.Length;
+        file.Position = length;
+        Envelope.WriteFooter(file, 0, length, 0);
+        file.Flush(flushToDisk: true);
+    }
 
     public static bool HasPackage(string path)
     {
@@ -81,15 +111,17 @@ public static class PackageService
         string parent = Path.GetDirectoryName(output)!;
         string id = Guid.NewGuid().ToString("N");
         string payloadTemp = Path.Combine(parent, ".2password-" + id + ".payload.partial");
+        string recoveryTemp = Path.Combine(parent, ".2password-" + id + ".recovery.partial");
         string launcherTemp = Path.Combine(parent, ".2password-" + id + ".launcher.partial");
-        bool payloadCreated = false, launcherCreated = false, sidecarPublished = false, committed = false, detached = false;
+        bool payloadCreated = false, recoveryCreated = false, launcherCreated = false, sidecarPublished = false, committed = false, detached = false;
         try
         {
             var info = Envelope.Create(options.Passwords, options.Compression, total, files, dirs, out key, ct, progress);
+            long bodyLength;
             using (var payload = new FileStream(SafePaths.Extended(payloadTemp), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 128 * 1024, FileOptions.SequentialScan))
             {
                 payloadCreated = true;
-                long limit = stub is not null && options.Layout == PackageLayout.Embedded ? uint.MaxValue - stub.Length : long.MaxValue;
+                long limit = stub is not null && options.Layout == PackageLayout.Embedded ? uint.MaxValue - stub.Length - Envelope.FooterSize : long.MaxValue;
                 using var limitedPayload = new LimitedWriteStream(payload, limit);
                 info.WriteHeader(limitedPayload);
                 using (var encrypted = new EncryptingStream(limitedPayload, key, info, ct))
@@ -97,48 +129,76 @@ public static class PackageService
                     WriteArchive(encrypted, entries, total, ct, progress);
                     encrypted.Complete();
                 }
-                Envelope.WriteFooter(limitedPayload, 0, payload.Position);
+                bodyLength = payload.Position;
                 CryptographicOperations.ZeroMemory(key);
                 key = null;
                 progress?.Report(new(Text.Get("核对源文件"), "", total, total, entries.Count, entries.Count));
                 SafePaths.ValidateInventory(entries, SafePaths.Scan(source, ct, null));
                 ct.ThrowIfCancellationRequested();
                 payload.Flush(flushToDisk: true);
+            }
 
-                if (stub is not null)
+            long recoveryLength = 0;
+            if (options.Recovery is { } writeRecovery)
+            {
+                using var recovery = new FileStream(SafePaths.Extended(recoveryTemp), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 128 * 1024, FileOptions.SequentialScan);
+                recoveryCreated = true;
+                writeRecovery(payloadTemp, bodyLength, recovery, ct);
+                ct.ThrowIfCancellationRequested();
+                recovery.Flush(flushToDisk: true);
+                recoveryLength = recovery.Length;
+            }
+
+            long packed = bodyLength + recoveryLength + Envelope.FooterSize;
+            if (stub is not null)
+            {
+                detached = options.Layout == PackageLayout.Detached ||
+                    (options.Layout == PackageLayout.Auto && packed > uint.MaxValue - stub.Length);
+                if (!detached && packed > uint.MaxValue - stub.Length)
+                    throw new PackageException(Text.Get("单文件 EXE 超过 Windows 的 4 GiB 限制。请选择自动布局或分离布局。"));
+                if (detached) SafePaths.EnsureDestination(sidecar!);
+            }
+            if (stub is null || detached)
+            {
+                using var payload = new FileStream(SafePaths.Extended(payloadTemp), FileMode.Open, FileAccess.ReadWrite, FileShare.None, 128 * 1024, FileOptions.SequentialScan);
+                if (payload.Length != bodyLength) throw new PackageException(Text.Get("加密数据在生成恢复记录期间被修改。"));
+                payload.Position = bodyLength;
+                AppendFile(recoveryTemp, recoveryLength, payload, ct, null);
+                Envelope.WriteFooter(payload, 0, bodyLength, recoveryLength);
+                payload.Flush(flushToDisk: true);
+            }
+            if (stub is not null)
+            {
+                using var launcher = new FileStream(SafePaths.Extended(launcherTemp), FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, FileOptions.SequentialScan);
+                launcherCreated = true;
+                using var limitedLauncher = new LimitedWriteStream(launcher, uint.MaxValue);
+                string stage = detached ? Text.Get("生成配套解密程序") : Text.Get("组装独立 EXE");
+                long assemblyTotal = stub.Length + (detached ? 0 : bodyLength + recoveryLength);
+                long assembled = 0;
+                var assemblyClock = Stopwatch.StartNew();
+                progress?.Report(new(stage, Path.GetFileName(output), 0, assemblyTotal, 0, 1));
+                void ReportAssembly(int count)
                 {
-                    detached = options.Layout == PackageLayout.Detached ||
-                        (options.Layout == PackageLayout.Auto && payload.Length > uint.MaxValue - stub.Length);
-                    if (!detached && payload.Length > uint.MaxValue - stub.Length)
-                        throw new PackageException(Text.Get("单文件 EXE 超过 Windows 的 4 GiB 限制。请选择自动布局或分离布局。"));
-                    if (detached) SafePaths.EnsureDestination(sidecar!);
-                    using var launcher = new FileStream(SafePaths.Extended(launcherTemp), FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, FileOptions.SequentialScan);
-                    launcherCreated = true;
-                    using var limitedLauncher = new LimitedWriteStream(launcher, uint.MaxValue);
-                    long bodyLength = payload.Length - Envelope.FooterSize;
-                    long assemblyTotal = stub.Length + (detached ? 0 : bodyLength);
-                    long assembled = 0;
-                    var assemblyClock = Stopwatch.StartNew();
-                    progress?.Report(new(detached ? Text.Get("生成配套解密程序") : Text.Get("组装独立 EXE"), Path.GetFileName(output), 0, assemblyTotal, 0, 1));
-                    void ReportAssembly(int count)
-                    {
-                        assembled += count;
-                        if (assemblyClock.ElapsedMilliseconds < 80) return;
-                        progress?.Report(new(detached ? Text.Get("生成配套解密程序") : Text.Get("组装独立 EXE"), Path.GetFileName(output), assembled, assemblyTotal, 0, 1));
-                        assemblyClock.Restart();
-                    }
-                    stub.Position = 0;
-                    CopyWithCancellation(stub, limitedLauncher, stub.Length, ct, ReportAssembly);
-                    if (detached) new DetachedReference(Path.GetFileName(sidecar!), info.Hash).Write(limitedLauncher);
-                    else
-                    {
-                        payload.Position = 0;
-                        CopyWithCancellation(payload, limitedLauncher, bodyLength, ct, ReportAssembly);
-                        Envelope.WriteFooter(limitedLauncher, stub.Length, bodyLength);
-                    }
-                    ct.ThrowIfCancellationRequested();
-                    launcher.Flush(flushToDisk: true);
+                    assembled += count;
+                    if (assemblyClock.ElapsedMilliseconds < 80) return;
+                    progress?.Report(new(stage, Path.GetFileName(output), assembled, assemblyTotal, 0, 1));
+                    assemblyClock.Restart();
                 }
+                stub.Position = 0;
+                CopyWithCancellation(stub, limitedLauncher, stub.Length, ct, ReportAssembly);
+                if (detached) new DetachedReference(Path.GetFileName(sidecar!), info.Hash).Write(limitedLauncher);
+                else
+                {
+                    using (var payload = new FileStream(SafePaths.Extended(payloadTemp), FileMode.Open, FileAccess.Read, FileShare.None, 128 * 1024, FileOptions.SequentialScan))
+                    {
+                        if (payload.Length != bodyLength) throw new PackageException(Text.Get("加密数据在生成恢复记录期间被修改。"));
+                        CopyWithCancellation(payload, limitedLauncher, bodyLength, ct, ReportAssembly);
+                    }
+                    AppendFile(recoveryTemp, recoveryLength, limitedLauncher, ct, ReportAssembly);
+                    Envelope.WriteFooter(limitedLauncher, stub.Length, bodyLength, recoveryLength);
+                }
+                ct.ThrowIfCancellationRequested();
+                launcher.Flush(flushToDisk: true);
             }
             ct.ThrowIfCancellationRequested();
             SafePaths.EnsureDestination(output);
@@ -166,13 +226,14 @@ public static class PackageService
             }
             committed = true;
             progress?.Report(new(Text.Get("完成"), output, total, total, entries.Count, entries.Count));
-            return new(output, files, dirs, total, detached ? sidecar : null, detached);
+            return new(output, files, dirs, total, detached ? sidecar : null, detached, recoveryLength);
         }
         catch (EndOfStreamException e) { throw new PackageException(Text.Get("文件被截断或在读取期间发生变化。"), e); }
         finally
         {
             if (key is not null) CryptographicOperations.ZeroMemory(key);
             if (payloadCreated && File.Exists(SafePaths.Extended(payloadTemp))) File.Delete(SafePaths.Extended(payloadTemp));
+            if (recoveryCreated && File.Exists(SafePaths.Extended(recoveryTemp))) File.Delete(SafePaths.Extended(recoveryTemp));
             if (launcherCreated && File.Exists(SafePaths.Extended(launcherTemp))) File.Delete(SafePaths.Extended(launcherTemp));
             if (!committed && sidecarPublished && File.Exists(SafePaths.Extended(sidecar!))) File.Delete(SafePaths.Extended(sidecar!));
         }
@@ -409,6 +470,14 @@ public static class PackageService
         var drive = new DriveInfo(root);
         if (drive.IsReady && drive.AvailableFreeSpace < total)
             throw new PackageException(Text.Get("目标磁盘可用空间不足以容纳完整解包数据。"));
+    }
+
+    private static void AppendFile(string path, long expected, Stream output, CancellationToken ct, Action<int>? progress)
+    {
+        if (expected == 0) return;
+        using var input = new FileStream(SafePaths.Extended(path), FileMode.Open, FileAccess.Read, FileShare.None, 128 * 1024, FileOptions.SequentialScan);
+        if (input.Length != expected) throw new PackageException(Text.Get("恢复记录在写入期间被修改。"));
+        CopyWithCancellation(input, output, expected, ct, progress);
     }
 
     private static void CopyWithCancellation(Stream input, Stream output, long expected, CancellationToken ct, Action<int>? progress = null)

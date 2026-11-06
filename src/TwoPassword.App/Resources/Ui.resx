@@ -37,20 +37,21 @@
   --extract &lt;package&gt; --output &lt;new-directory&gt; --password-stdin [--verify-first] [--report &lt;new.json&gt;]
   --extract-self --output &lt;new-directory&gt; --password-stdin [--verify-first] [--report &lt;new.json&gt;]
   --create &lt;source&gt; --output &lt;new.exe&gt; --passwords-stdin [--compression zstd|brotli|none] [--layout auto|embedded|detached] [--recovery-percent 0|5|10|20] [--stub &lt;published-exe&gt;] [--report &lt;new.json&gt;]
-  --verify-recovery &lt;par2&gt; [--report &lt;new.json&gt;]
-  --repair-recovery &lt;par2&gt; [--report &lt;new.json&gt;]
+  --verify-recovery &lt;package&gt; [--report &lt;new.json&gt;]
+  --repair-recovery &lt;package&gt; [--report &lt;new.json&gt;]
   --export-recovery-source &lt;new.tar.xz&gt; [--report &lt;new.json&gt;]
   --explorer-menu on|off    Add or remove 2Password in the Explorer right-click menu.
   --language en|zh-CN    Optional for every operation, including --help.
 
 Passwords are accepted only through redirected standard input, encoded as strict UTF-8 without BOM detection.
 Creation expects a JSON string array. Extraction reads the exact password and removes only one final newline.
-Defaults: Zstd compression, automatic layout, 10% PAR2 recovery data.
-Detached packages require both the EXE and .2pw in the same folder. Keep all generated .par2 files too.
-Normal extraction authenticates data in one streaming pass. On detected corruption, matching PAR2 data can repair it before retrying authenticated extraction.
---verify-first adds a complete PAR2 verification pass before extraction.
+Defaults: Zstd compression, automatic layout, 5% PAR2 recovery data stored inside the package.
+Detached packages require both the EXE and .2pw in the same folder. The recovery data is in the .2pw.
+Normal extraction authenticates data in one streaming pass. When it finds damage, it repairs a copy from the recovery data and extracts from that copy; the package itself is not changed.
+--verify-first checks the whole package against its recovery data before extraction.
+--repair-recovery writes the repaired blocks back into the package.
 Existing output files and directories are never overwritten or merged.
-Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient recovery data.
+Recovery exit status: 0 = intact or repaired, 1 = repairable, 2 = not enough recovery data, 4 = no usable recovery data.
 </value>
   </data>
   <data name="Choose exactly one operation." xml:space="preserve">
@@ -83,9 +84,6 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   <data name="Self-extracting output must end in .exe." xml:space="preserve">
     <value>Self-extracting output must end in .exe.</value>
   </data>
-  <data name="The encrypted package was successfully created and kept; the recovery stage or result report did not complete." xml:space="preserve">
-    <value>The encrypted package was successfully created and kept; the recovery stage or result report did not complete.</value>
-  </data>
   <data name="Unable to write command result." xml:space="preserve">
     <value>Unable to write command result.</value>
   </data>
@@ -112,9 +110,6 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   </data>
   <data name="用 2Password 解密" xml:space="preserve">
     <value>Decrypt with 2Password</value>
-  </data>
-  <data name="用 2Password 修复" xml:space="preserve">
-    <value>Repair with 2Password</value>
   </data>
   <data name="一次只能放一项" xml:space="preserve">
     <value>One item at a time</value>
@@ -164,17 +159,14 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   <data name="打开加密包" xml:space="preserve">
     <value>Open a package</value>
   </data>
-  <data name="2Password 加密包|*.exe;*.2pw;*.par2|所有文件|*.*" xml:space="preserve">
-    <value>2Password packages|*.exe;*.2pw;*.par2|All files|*.*</value>
+  <data name="2Password 加密包|*.exe;*.2pw|所有文件|*.*" xml:space="preserve">
+    <value>2Password packages|*.exe;*.2pw|All files|*.*</value>
   </data>
   <data name="拖入文件或文件夹" xml:space="preserve">
     <value>Drop a file or folder here</value>
   </data>
   <data name="松开，打开加密包" xml:space="preserve">
     <value>Release to open</value>
-  </data>
-  <data name="松开，检查恢复记录" xml:space="preserve">
-    <value>Release to check the recovery data</value>
   </data>
   <data name="松开，开始加密" xml:space="preserve">
     <value>Release to encrypt</value>
@@ -194,12 +186,6 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   <data name="先选择保存位置。" xml:space="preserve">
     <value>Choose where to save it first.</value>
   </data>
-  <data name="正在生成恢复记录" xml:space="preserve">
-    <value>Creating recovery data</value>
-  </data>
-  <data name="已取消生成恢复记录" xml:space="preserve">
-    <value>Recovery data was cancelled</value>
-  </data>
   <data name="恢复记录没有生成：{0}" xml:space="preserve">
     <value>Recovery data was not created: {0}</value>
   </data>
@@ -217,9 +203,6 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   </data>
   <data name="确认密码 {0}" xml:space="preserve">
     <value>Confirm password {0}</value>
-  </data>
-  <data name="至少 {0} 个字符" xml:space="preserve">
-    <value>At least {0} characters</value>
   </data>
   <data name="和第 {0} 个密码相同" xml:space="preserve">
     <value>Same as password {0}</value>
@@ -257,11 +240,14 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   <data name="先选择还原位置。" xml:space="preserve">
     <value>Choose where to restore first.</value>
   </data>
-  <data name="选择 PAR2 恢复记录" xml:space="preserve">
-    <value>Choose PAR2 recovery data</value>
+  <data name="选择要修复的加密包" xml:space="preserve">
+    <value>Choose a package to repair</value>
   </data>
-  <data name="PAR2 恢复记录 (*.par2)|*.par2" xml:space="preserve">
-    <value>PAR2 recovery data (*.par2)|*.par2</value>
+  <data name="恢复记录 {0}" xml:space="preserve">
+    <value>Recovery data {0}</value>
+  </data>
+  <data name="没有恢复记录" xml:space="preserve">
+    <value>No recovery data</value>
   </data>
   <data name="检查" xml:space="preserve">
     <value>Check</value>
@@ -302,6 +288,9 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   <data name="{0} 项" xml:space="preserve">
     <value>{0} items</value>
   </data>
+  <data name="正在生成恢复记录" xml:space="preserve">
+    <value>Creating recovery data</value>
+  </data>
   <data name="发现损坏，正在检查" xml:space="preserve">
     <value>Damage found, checking</value>
   </data>
@@ -326,14 +315,8 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   <data name="加密完成" xml:space="preserve">
     <value>Encrypted</value>
   </data>
-  <data name="恢复记录 · 1 个文件" xml:space="preserve">
-    <value>Recovery data · 1 file</value>
-  </data>
-  <data name="恢复记录 · {0} 个文件" xml:space="preserve">
-    <value>Recovery data · {0} files</value>
-  </data>
-  <data name="这些文件放在同一个文件夹里" xml:space="preserve">
-    <value>Keep these files in the same folder</value>
+  <data name="两个文件要放在同一个文件夹里" xml:space="preserve">
+    <value>Keep both files in the same folder</value>
   </data>
   <data name="在文件夹中显示" xml:space="preserve">
     <value>Show in folder</value>
@@ -461,14 +444,11 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   <data name="单个 EXE 最大 4 GB" xml:space="preserve">
     <value>A single EXE holds up to 4 GB</value>
   </data>
-  <data name="两个文件要放在同一个文件夹里" xml:space="preserve">
-    <value>Keep both files in the same folder</value>
-  </data>
   <data name="恢复记录" xml:space="preserve">
     <value>Recovery</value>
   </data>
-  <data name="额外生成 PAR2 文件，加密包损坏时用来修复" xml:space="preserve">
-    <value>Adds PAR2 files that can repair a damaged package</value>
+  <data name="PAR2 恢复数据存在加密包里，文件损坏时用来修复" xml:space="preserve">
+    <value>PAR2 recovery data is kept inside the package to repair damage</value>
   </data>
   <data name="无" xml:space="preserve">
     <value>Off</value>
@@ -490,9 +470,6 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   </data>
   <data name="先检查并修复，再解密" xml:space="preserve">
     <value>Check and repair before decrypting</value>
-  </data>
-  <data name="PAR2 恢复记录" xml:space="preserve">
-    <value>PAR2 recovery data</value>
   </data>
   <data name="进度" xml:space="preserve">
     <value>Progress</value>

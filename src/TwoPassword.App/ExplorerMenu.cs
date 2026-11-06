@@ -13,8 +13,7 @@ internal static class ExplorerMenu
     private const string EncryptFiles = Classes + @"*\shell\2Password";
     private const string EncryptFolders = Classes + @"Directory\shell\2Password";
     private const string DecryptData = Classes + @"SystemFileAssociations\.2pw\shell\2Password";
-    private const string RepairData = Classes + @"SystemFileAssociations\.par2\shell\2Password";
-    private static readonly string[] Keys = [EncryptFiles, EncryptFolders, DecryptData, RepairData];
+    private static readonly string[] Keys = [EncryptFiles, EncryptFolders, DecryptData];
 
     internal static bool IsEnabled(string executable)
     {
@@ -28,7 +27,6 @@ internal static class ExplorerMenu
         Write(EncryptFiles, L("用 2Password 加密"), executable, EncryptCommand(executable), excludeOwnFiles: true);
         Write(EncryptFolders, L("用 2Password 加密"), executable, EncryptCommand(executable));
         Write(DecryptData, L("用 2Password 解密"), executable, OpenCommand(executable));
-        Write(RepairData, L("用 2Password 修复"), executable, OpenCommand(executable));
     }
 
     internal static void Disable(string executable)
@@ -46,7 +44,7 @@ internal static class ExplorerMenu
         verb.SetValue("MUIVerb", label);
         verb.SetValue("Icon", $"\"{executable}\",0");
         verb.SetValue("MultiSelectModel", "Single");
-        if (excludeOwnFiles) verb.SetValue("AppliesTo", "NOT System.FileExtension:=.2pw AND NOT System.FileExtension:=.par2");
+        if (excludeOwnFiles) verb.SetValue("AppliesTo", "NOT System.FileExtension:=.2pw");
         using var target = verb.CreateSubKey("command");
         target.SetValue(null, command);
     }

@@ -25,31 +25,32 @@ pwsh -File scripts/Test-Installer.ps1
 
 | 检查 | 通过 | 失败 |
 | --- | ---: | ---: |
-| 独立安全与文件往返 | 187 | 0 |
-| 真实 PAR2 与按需恢复 | 24 | 0 |
+| 独立安全与文件往返 | 189 | 0 |
+| 真实 PAR2 与按需恢复 | 25 | 0 |
 | 共享语言资源与跨语言操作 | 15 | 0 |
-| 真实自包含 EXE / CLI | 11 | 0 |
+| 真实自包含 EXE / CLI | 14 | 0 |
 | 中文安装、英文替换与卸载 | 52 | 0 |
 
-共享语言验证覆盖 242 对资源和 241 个实际 `Text.Get` 源代码键；App 自有界面另有 156 对资源。
+共享语言验证覆盖 192 对资源和 192 个实际 `Text.Get` 源代码键；App 自有界面另有 148 对资源。
 
 ## 常规安全与还原验证
 
-主测试项目 `tests/TwoPassword.Tests` 的完整本地记录为 **187 项通过，0 项失败，0 项跳过**。其重要覆盖包括：
+主测试项目 `tests/TwoPassword.Tests` 共 **189 项，GitHub Actions 上全部通过**。本机以普通权限运行时，“Private directory blocks permissive parent ACLs and protects child files”一项因为无权修改测试父目录的权限而失败，其余 188 项通过。其重要覆盖包括：
 
 | 范围 | 实际检查 |
 | --- | --- |
 | 密码学原语 | RFC 9106 Argon2id 标准向量；公开 AES-256-GCM 向量与错误标签拒绝 |
-| 独立密码 | 多个密码分别还原同一完整文件树；第 16 个密码槽；错误、空、超长及非法 Unicode 密码 |
+| 独立密码 | 多个密码分别还原同一完整文件树；第 16 个密码槽；1 个字符的密码；错误、空、超长及非法 Unicode 密码 |
 | 独立格式检查 | 测试代码独立编写的容器编码器和解码器，与生产代码交叉验证 |
 | 名称与内容 | 中文、日文、阿拉伯文、emoji、NFC/NFD 区分，超过 1,000 字符路径；逐文件 SHA-256、空目录和空文件 |
 | 压缩 | Zstd、Brotli、不压缩；截断、尾随数据、串联帧、错误长度、过大窗口、异常帧和解压输出边界 |
 | 认证结构 | 内容、标签、长度、顺序、结束标记篡改；截断、重复块和多余块；未使用密码槽损坏 |
 | 元数据冗余 | 头部和尾部的各个单副本存活情形；有效但冲突的副本拒绝 |
+| 内嵌恢复数据 | 恢复数据长度与文件长度对不上时拒绝；生产读取器和独立参考读取器都能跳过加密数据后的恢复数据 |
 | 分离文件 | 丢失或替换数据文件、错误头部身份、绝对路径、穿越、递归引用及名称限制 |
 | 恶意归档 | 穿越、设备名、重解析点、大小写冲突、重复条目、异常元数据与资源上限 |
 | 操作完整性 | 取消、源文件改变、目标已存在、失败后清理和最终提交保护 |
-| PAR2 元数据 | 21 个独立恶意输入用例，检查路径、描述符、Unicode 扩展、不同恢复集混用、校验与块数量限制 |
+| PAR2 元数据 | 20 个用例：默认块大小、损坏或截断后从下一个包继续、混用的恢复集、相互冲突的文件描述、6 种错误的源文件名、长度和块大小不符、FileID 校验、超大分配、未知包类型、重复的恢复块和取消 |
 | 工作区权限 | 22 个用例，包含真实 NTFS 权限及子目录继承、宽松父目录、并发创建和原始 ACL 的恶意构造；不支持持久 ACL 的能力策略明确拒绝 |
 
 权限测试读回真实 NTFS 安全描述符，并检查陌生主体、空或未保护 DACL、错误所有者、回调/对象 ACE、错误继承与权限范围。FAT/exFAT 的拒绝逻辑用模拟的能力标志验证，没有挂载真实的 FAT/exFAT 介质。
@@ -58,18 +59,19 @@ pwsh -File scripts/Test-Installer.ps1
 
 `tests/TwoPassword.Recovery.Tests` 调用内嵌的真实 `par2cmdline-turbo 1.5.0` 进程，覆盖以下行为：
 
-- 对含中文、日文和 emoji 的文件名生成并校验真实恢复记录。
+- 对含中文、日文和 emoji 的文件名生成恢复记录，恢复记录存在加密包里，不另外生成文件。
 - 健康包直接解包，恢复进度回调保持为空，未启动 PAR2 扫描。
 - 错误密码直接退出；即使密文也有损坏，仍不会因错误密码运行 PAR2。
 - 空、超长和非法 Unicode 密码在预检查之前被拒绝。
 - 用户明确请求预检查时执行 PAR2；已有还原目标始终先拒绝。
-- 健康的加密包在可选恢复记录全部损坏时仍可正常认证解包。
-- 实际翻转密文字节：先确认 AES-GCM 拒绝，再执行自动修复与完整认证重试；密文和还原文件均与原始 SHA-256 一致。
-- 删除索引后，直接 `.2pw` 的预检查能够找到有效恢复分卷；损坏索引同样可用冗余元数据恢复。
-- 冗余不足时，原始损坏文件保持原样；成功修复保留损坏原件备份。
+- 恢复记录里的包损坏时，健康的加密包仍可正常认证解包和检查。
+- 实际翻转密文字节：先确认 AES-GCM 拒绝，再在副本上修复并完整解包，原文件不改动；原地修复后与原始 SHA-256 一致。
+- 三份头部副本全部清零时，解包仍能通过恢复记录完成。
+- 冗余不足时，检查和修复都返回退出码 2，损坏的文件保持原样，也不产生解包输出。
 - 验证只读源文件时，不改变源文件的只读属性。
-- 对分离包重建完全缺失的小启动器；对恶意穿越描述符、取消和临时工作区清理进行检查。
-- 离线导出完整 PAR2 对应源码，并核对固定 SHA-256；拒绝覆盖已有源码导出文件。
+- 单个 EXE 和双文件包的 `.2pw` 各自带恢复记录，损坏后能解包和原地修复。
+- 尾部丢失：`.2pw` 截掉最后 1,192 字节；EXE 最后 4 KiB 清零，同时清掉第一份头部副本，程序部分还放了两处假的 `2PWHDR03`。两种情况都能扫描定位并解包，修复后写回新尾部，加密数据与原始一致。截到加密数据中间的文件报告失败，不做猜测。
+- 取消后不留下工作区；离线导出完整 PAR2 对应源码并核对固定 SHA-256；拒绝覆盖已有导出文件。
 
 这组测试直接验证了默认解包的性能策略：**健康文件不做额外整包 PAR2 读取，认证始终执行；只有检测到损坏并确实完成修复才重新解包一次。**
 
@@ -82,7 +84,7 @@ pwsh -File scripts/Test-Installer.ps1
 - 独立的本机运行组件缓存。
 - .NET 主机跟踪，检查自包含模式及包内 `System.Private.CoreLib.dll`。
 
-真实进程检查包括独立创建、独立解析、每个密码还原完整文件树、错误密码不产生目标、拒绝覆盖、无压缩包、外部数据文件丢失后 PAR2 重建，以及**正在运行的嵌入式 EXE 修复自身损坏的数据区后继续解包**。
+真实进程检查包括独立创建、独立解析、每个密码还原完整文件树、错误密码不产生目标、拒绝覆盖和无压缩包。恢复记录方面：双文件包的 `.2pw` 和单个 EXE 损坏后都能解密，原文件不改动；`--repair-recovery` 原地修复后与原始字节一致；EXE 最后 4 KiB 清零后，便携版能检查、解密并写回新尾部，修好的 EXE 又能自己解密。
 
 中英文命令行帮助、报告中的中英文密码错误、复制后仍可使用中文卫星资源，也在该脚本中检查。第二个密码包含前导 U+FEFF、前导和尾随空格；输入末尾附加 CRLF，验证程序只移除输入行结束符，保留密码本身。
 
@@ -96,11 +98,13 @@ pwsh -File scripts/Test-Installer.ps1
 
 ## 实际界面操作
 
-已使用真实发布版程序完成文件夹选择、双密码创建、Zstd、分离文件布局、10% PAR2 生成，以及使用第二个含日文和首尾空格的密码解包。全部文件 SHA-256 一致，空目录以及不同子目录中的同名文件均保留。创建目标和解包目录发生冲突时，现有哨兵文件保持原样，建议名称中的 `(2)` 后缀正确配对。
+已使用真实发布版程序完成文件夹选择、双密码创建、Zstd、分离文件布局、PAR2 恢复记录生成，以及使用第二个含日文和首尾空格的密码解包。全部文件 SHA-256 一致，空目录以及不同子目录中的同名文件均保留。创建目标和解包目录发生冲突时，现有哨兵文件保持原样，建议名称中的 `(2)` 后缀正确配对。
 
-中英文界面在 125% DPI 下用 UI Automation 驱动实际检查，浅色和深色主题各一遍：按打开的文件类型进入加密、解密或修复，最小窗口 520×500 下的滚动，最大化边距，密码行内校验（长度、两次不一致），错误密码提示，以及加密、解密、修复的进度页与完成页。窗口截图保存在 `assets/screenshots/`，仅包含空字段。
+中英文界面在 125% DPI 下用 UI Automation 驱动实际检查，浅色和深色主题各一遍：按打开的文件类型进入加密、解密或修复，最小窗口 520×500 下的滚动，最大化边距，密码行内校验（重复、两次不一致），错误密码提示，以及加密、解密、修复的进度页与完成页。窗口截图保存在 `assets/screenshots/`，仅包含空字段。
 
-提权和右键菜单同样实际操作过。加密或解密到 `C:\Program Files` 时，提示旁出现“以管理员身份重试”；点击并通过 UAC 后，新的管理员窗口保留源文件和目标位置，在 Program Files 中完成加密和解密，标题显示“管理员”，菜单不再提供“以管理员身份运行”。管理员窗口能接收从普通权限资源管理器拖入的文件。开启右键菜单后，在资源管理器中检查了普通文件、文件夹、`.2pw` 和 `.par2` 各自显示的菜单项，关闭后注册表项全部移除。
+恢复记录内嵌后的界面另外检查了：标题栏的 GitHub 图标；选项里恢复记录默认 5%，加密只产生一个 EXE；从修复页打开密文损坏的 EXE，检查后修复；尾部清零的 EXE 在修复页显示恢复记录大小，检查结果为“文件尾部损坏，加密数据完整，可以修复”；`.2pw` 尾部清零的双文件包在解密页提示损坏，输入密码后成功解密。1 个字符的密码在界面里通过校验并完成加密，再用命令行以同一密码解开。
+
+提权和右键菜单同样实际操作过。加密或解密到 `C:\Program Files` 时，提示旁出现“以管理员身份重试”；点击并通过 UAC 后，新的管理员窗口保留源文件和目标位置，在 Program Files 中完成加密和解密，标题显示“管理员”，菜单不再提供“以管理员身份运行”。管理员窗口能接收从普通权限资源管理器拖入的文件。开启右键菜单后，在资源管理器中检查了普通文件、文件夹和 `.2pw` 各自显示的菜单项，关闭后注册表项全部移除。
 
 ## 安装、升级和卸载
 
@@ -135,12 +139,12 @@ pwsh -File scripts/Test-LargeFiles.ps1
 
 | 测试 | 源文件字节数 | 输出 | 创建耗时 | 解包耗时 | 结果 |
 | --- | ---: | --- | ---: | ---: | --- |
-| 不压缩 + 自动布局 | 4,423,942,144 | 66,674,733 字节启动器 + 4,424,069,228 字节 `.2pw` | 4.78 秒 | 6.09 秒 | 源和还原长度、完整 SHA-256 相同 |
-| Zstd + 自动布局 | 8,589,934,715 | 67,347,338 字节嵌入式 EXE | 6.48 秒 | 5.70 秒 | 超过 8 GiB 的 PAX 文件长度与完整 SHA-256 相同 |
+| 不压缩 + 自动布局 | 4,423,942,144 | 66,762,374 字节启动器 + 4,424,069,228 字节 `.2pw` | 5.38 秒 | 7.57 秒 | 源和还原长度、完整 SHA-256 相同 |
+| Zstd + 自动布局 | 8,589,934,715 | 67,434,976 字节嵌入式 EXE | 6.43 秒 | 21.04 秒 | 超过 8 GiB 的 PAX 文件长度与完整 SHA-256 相同 |
 
-整个测试进程观察到的峰值工作集为 **357,687,296 字节（约 341 MiB）**，峰值托管内存为 207,750,824 字节。计时受本机存储、缓存、稀疏文件和高压缩率数据影响，只反映这组数据在这台机器上的表现。
+整个测试进程观察到的峰值工作集为 **413,523,968 字节（约 394 MiB）**，峰值托管内存为 281,612,328 字节。计时受本机存储、缓存、稀疏文件和高压缩率数据影响，只反映这组数据在这台机器上的表现。
 
-大文件用例调用生产 Core API，用当时发布版 EXE 的快照作模板，没有直接运行这些大包；独立 EXE 的实际启动见上一节。之后的界面改动没有改变容器格式和数据处理。
+大文件用例调用生产 Core API，用本次 v3 格式发布版 EXE 的快照作模板，不生成恢复记录，也没有直接运行这些大包；独立 EXE 的实际启动见上一节。
 
 ### Windows 加载器边界
 
@@ -162,4 +166,4 @@ pwsh -File scripts/Test-LargeFiles.ps1
 
 ---
 
-**English overview.** The repository includes reproducible adversarial tests, real PAR2 recovery tests, localization checks, actual copied self-extractor execution, and install/upgrade/uninstall tests. The primary suite passed 187 cases with no failures or skips, including 22 workspace-permission regressions. Local large-file cases processed 4,423,942,144-byte uncompressed data and an 8,589,934,715-byte PAX file, comparing full SHA-256 hashes after extraction. The approximately 341 MiB observed peak working set and timing figures describe these synthetic fixtures on one Windows host. Regular suites and installer/standalone checks gate GitHub Releases; large-file tests are available separately.
+**English overview.** The repository includes reproducible adversarial tests, real PAR2 recovery tests, localization checks, actual copied self-extractor execution, and install/upgrade/uninstall tests. The primary suite has 189 cases, including 22 workspace-permission regressions, and all of them pass on GitHub Actions; run locally without elevation, one ACL case fails because it can't change the test parent's permissions. The recovery tests cover packages whose trailer is zeroed or truncated. Local large-file cases processed 4,423,942,144-byte uncompressed data and an 8,589,934,715-byte PAX file, comparing full SHA-256 hashes after extraction. The approximately 394 MiB observed peak working set and timing figures describe these synthetic fixtures on one Windows host. Regular suites and installer/standalone checks gate GitHub Releases; large-file tests are available separately.

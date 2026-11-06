@@ -103,8 +103,7 @@ function Same-PathIdentity($First, $Second) {
 $explorerVerbKeys = @(
     'HKCU:\Software\Classes\*\shell\2Password',
     'HKCU:\Software\Classes\Directory\shell\2Password',
-    'HKCU:\Software\Classes\SystemFileAssociations\.2pw\shell\2Password',
-    'HKCU:\Software\Classes\SystemFileAssociations\.par2\shell\2Password'
+    'HKCU:\Software\Classes\SystemFileAssociations\.2pw\shell\2Password'
 )
 
 function Get-ExistingExplorerVerbs {

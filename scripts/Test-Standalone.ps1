@@ -81,10 +81,34 @@ function Assert-Tree {
     if ($expectedDirs.Count -ne $actualDirs.Count) { throw 'Directory counts differ.' }
 }
 
+# Reads the first of the three trailer records: payload offset, payload length, recovery length.
+function Get-PackageRegions {
+    param([string]$Path)
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $record = [byte[]]::new(64)
+        $stream.Position = $stream.Length - 192
+        [void]$stream.Read($record, 0, 64)
+        if ([Text.Encoding]::ASCII.GetString($record, 0, 8) -ne '2PWTAIL3') { throw "Not a 2Password v3 package: $Path" }
+        [pscustomobject]@{ Offset=[BitConverter]::ToInt64($record, 8); Length=[BitConverter]::ToInt64($record, 16); Recovery=[BitConverter]::ToInt64($record, 24); FileLength=$stream.Length }
+    } finally { $stream.Dispose() }
+}
+
+function Set-Damage {
+    param([string]$Path,[long]$Position)
+    $stream = [IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+    try {
+        $stream.Position = $Position
+        $byte = $stream.ReadByte()
+        $stream.Position = $Position
+        $stream.WriteByte([byte]($byte -bxor 64))
+    } finally { $stream.Dispose() }
+}
+
 try {
     $englishHelp = Invoke-PackageCommand $portable @('--help','--language','en')
     $chineseHelp = Invoke-PackageCommand $portable @('--help','--language','zh-CN')
-    if ($englishHelp.Output -notmatch '--verify-first' -or $englishHelp.Output -notmatch 'password' -or $chineseHelp.Output -notmatch '密码') { throw 'Bilingual CLI help is incomplete.' }
+    if ($englishHelp.Output -notmatch '--verify-first' -or $englishHelp.Output -notmatch '--repair-recovery <package>' -or $englishHelp.Output -notmatch 'password' -or $chineseHelp.Output -notmatch '密码') { throw 'Bilingual CLI help is incomplete.' }
     $checks.Add([pscustomobject]@{Name='English and Chinese standalone CLI help and recovery flags';Passed=$true})
     $source = Join-Path $work '资料_日本語_📦'
     [void][IO.Directory]::CreateDirectory((Join-Path $source '空目录 empty'))
@@ -150,30 +174,55 @@ try {
     $detachedReport = Join-Path $work 'detached-create.json'
     [void](Invoke-PackageCommand $portable @('--create',$source,'--output',$detached,'--passwords-stdin','--compression','zstd','--layout','detached','--recovery-percent','10','--report',$detachedReport) $passwordJson)
     $detachedResult = Get-Content -Raw -LiteralPath $detachedReport | ConvertFrom-Json
-    if (-not $detachedResult.result.IsDetached -or -not (Test-Path -LiteralPath $detachedResult.result.DataPath)) { throw 'Detached data file is missing.' }
-    $dataHash = (Get-FileHash -LiteralPath $detachedResult.result.DataPath).Hash
-    Move-Item -LiteralPath $detachedResult.result.DataPath -Destination ($detachedResult.result.DataPath + '.lost')
+    $data = $detachedResult.result.DataPath
+    if (-not $detachedResult.result.IsDetached -or -not (Test-Path -LiteralPath $data)) { throw 'Detached data file is missing.' }
+    if (@(Get-ChildItem -LiteralPath $work -File -Filter '双文件包*').Count -ne 2) { throw 'Detached layout did not produce exactly two files.' }
+    $regions = Get-PackageRegions $data
+    if ($regions.Offset -ne 0 -or $regions.Recovery -le 0 -or $regions.Length + $regions.Recovery + 192 -ne $regions.FileLength) { throw 'The .2pw file does not carry its recovery data.' }
+    $dataHash = (Get-FileHash -LiteralPath $data).Hash
+    Set-Damage $data ([long]($regions.Length / 2))
+    $damagedHash = (Get-FileHash -LiteralPath $data).Hash
     $detachedOutput = Join-Path $work 'detached-repaired-output'
     [void](Invoke-PackageCommand $detached @('--extract-self','--output',$detachedOutput,'--password-stdin','--report',(Join-Path $work 'detached-extract.json')) $passwords[0])
     Assert-Tree $source (Join-Path $detachedOutput ([IO.Path]::GetFileName($source)))
-    if ((Get-FileHash -LiteralPath $detachedResult.result.DataPath).Hash -ne $dataHash) { throw 'PAR2 reconstructed detached ciphertext differs.' }
-    $checks.Add([pscustomobject]@{Name='standalone restores missing data sidecar with PAR2 before decrypting';Passed=$true})
+    if ((Get-FileHash -LiteralPath $data).Hash -ne $damagedHash) { throw 'Extraction modified the damaged .2pw file.' }
+    $checks.Add([pscustomobject]@{Name='detached pair decrypts a damaged .2pw through a repaired copy and leaves it unchanged';Passed=$true})
+    [void](Invoke-PackageCommand $portable @('--verify-recovery',$detached,'--report',(Join-Path $work 'detached-verify.json')) '' 1)
+    [void](Invoke-PackageCommand $portable @('--repair-recovery',$detached,'--report',(Join-Path $work 'detached-repair.json')))
+    if ((Get-FileHash -LiteralPath $data).Hash -ne $dataHash) { throw 'Repair did not restore the original .2pw bytes.' }
+    [void](Invoke-PackageCommand $portable @('--verify-recovery',$detached,'--report',(Join-Path $work 'detached-verify-after.json')))
+    $checks.Add([pscustomobject]@{Name='--repair-recovery restores the detached .2pw in place';Passed=$true})
 
     $repairable = Join-Path $work '自修复独立包.exe'
-    [void](Invoke-PackageCommand $portable @('--create',(Join-Path $source 'random.bin'),'--output',$repairable,'--passwords-stdin','--compression','zstd','--layout','embedded','--recovery-percent','10','--report',(Join-Path $work 'embedded-recovery-create.json')) $passwordJson)
+    [void](Invoke-PackageCommand $portable @('--create',(Join-Path $source 'random.bin'),'--output',$repairable,'--passwords-stdin','--compression','zstd','--layout','embedded','--report',(Join-Path $work 'embedded-recovery-create.json')) $passwordJson)
+    $regions = Get-PackageRegions $repairable
+    if ($regions.Offset -le 0 -or $regions.Recovery -le 0 -or $regions.Offset + $regions.Length + $regions.Recovery + 192 -ne $regions.FileLength) { throw 'The single EXE does not carry its recovery data.' }
     $beforeRepair = (Get-FileHash -LiteralPath $repairable).Hash
-    $damage = [IO.File]::Open($repairable,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
-    $position = $damage.Length - 8192
-    $damage.Position = $position
-    $byte = $damage.ReadByte()
-    $damage.Position = $position
-    $damage.WriteByte([byte]($byte -bxor 64))
-    $damage.Dispose()
+    Set-Damage $repairable ($regions.Offset + [long]($regions.Length / 2))
+    $damagedHash = (Get-FileHash -LiteralPath $repairable).Hash
     $repairOutput = Join-Path $work 'self-repair-output'
     [void](Invoke-PackageCommand $repairable @('--extract-self','--output',$repairOutput,'--password-stdin','--report',(Join-Path $work 'embedded-recovery-extract.json')) $passwords[0])
-    if ((Get-FileHash -LiteralPath $repairable).Hash -ne $beforeRepair) { throw 'Embedded self-repair did not restore original ciphertext.' }
+    if ((Get-FileHash -LiteralPath $repairable).Hash -ne $damagedHash) { throw 'Extraction modified the damaged EXE.' }
     if ((Get-FileHash -LiteralPath (Join-Path $repairOutput 'random.bin')).Hash -ne (Get-FileHash -LiteralPath (Join-Path $source 'random.bin')).Hash) { throw 'Self-repaired plaintext differs.' }
-    $checks.Add([pscustomobject]@{Name='running embedded EXE repairs its damaged payload before decrypting';Passed=$true})
+    $checks.Add([pscustomobject]@{Name='damaged single EXE with default recovery decrypts through a repaired copy';Passed=$true})
+    [void](Invoke-PackageCommand $portable @('--repair-recovery',$repairable,'--report',(Join-Path $work 'embedded-repair.json')))
+    if ((Get-FileHash -LiteralPath $repairable).Hash -ne $beforeRepair) { throw 'Repair did not restore the original EXE bytes.' }
+    $checks.Add([pscustomobject]@{Name='--repair-recovery restores the single EXE in place';Passed=$true})
+
+    # Zeroing the last 4 KiB removes the whole trailer and the end of the recovery data.
+    $tailless = Join-Path $work '无尾部独立包.exe'
+    Copy-Item -LiteralPath $repairable -Destination $tailless
+    $stream = [IO.File]::Open($tailless,[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::None)
+    try { $stream.Position = $stream.Length - 4096; $stream.Write([byte[]]::new(4096), 0, 4096) } finally { $stream.Dispose() }
+    [void](Invoke-PackageCommand $portable @('--verify-recovery',$tailless,'--report',(Join-Path $work 'tailless-verify.json')) '' 1)
+    $taillessOutput = Join-Path $work 'tailless-output'
+    [void](Invoke-PackageCommand $portable @('--extract',$tailless,'--output',$taillessOutput,'--password-stdin','--report',(Join-Path $work 'tailless-extract.json')) $passwords[1])
+    if ((Get-FileHash -LiteralPath (Join-Path $taillessOutput 'random.bin')).Hash -ne (Get-FileHash -LiteralPath (Join-Path $source 'random.bin')).Hash) { throw 'Plaintext from the EXE without a trailer differs.' }
+    [void](Invoke-PackageCommand $portable @('--repair-recovery',$tailless,'--report',(Join-Path $work 'tailless-repair.json')))
+    $repairedRegions = Get-PackageRegions $tailless
+    if ($repairedRegions.Offset -ne $regions.Offset -or $repairedRegions.Length -ne $regions.Length -or $repairedRegions.Recovery -le 0) { throw 'The rewritten trailer points at the wrong payload.' }
+    [void](Invoke-PackageCommand $tailless @('--extract-self','--output',(Join-Path $work 'tailless-after-repair'),'--password-stdin','--report',(Join-Path $work 'tailless-after-repair.json')) $passwords[0])
+    $checks.Add([pscustomobject]@{Name='single EXE with its last 4 KiB zeroed is found by scanning, decrypted and given a new trailer';Passed=$true})
     $final = [pscustomobject]@{Success=$true;Checks=$checks;Os=[Runtime.InteropServices.RuntimeInformation]::OSDescription;Scope='Isolated process and copied EXE on current Windows host; not a fresh Windows VM.'}
     $final | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $repo 'artifacts/standalone-results.json') -Encoding utf8NoBOM
     $checks | Select-Object Name,Passed | Format-Table -AutoSize
