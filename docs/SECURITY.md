@@ -1,157 +1,157 @@
-# 2Password 安全设计
+# 2Password security design
 
-[English](SECURITY.en.md) · 简体中文
+[English](SECURITY.md) · [简体中文](SECURITY.zh.md)
 
-## 保护目标
+## Protection goals
 
-攻击者可以拿到加密包、读到全部源码、修改包里的任意字节，并无限次离线猜密码。只要密码足够强、运行的程序可信、系统没有被控制，攻击者就读不到文件内容和文件名。内容损坏、密码槽被改、记录被重排、截断或附加多余数据，都会让解密失败。
+The threat model permits an attacker to obtain an encrypted package, know the complete source code, modify any package bytes, and make unlimited offline password guesses. With sufficiently strong passwords, a trusted executable, and an uncompromised operating system, the attacker cannot read file contents or filenames. Damaged content, altered password slots, reordered records, truncation, and unauthorized trailing data make decryption fail.
 
-拥有任意一个有效密码的人可以读取**全部**内容。每个密码单独就能解开，不需要和其他密码一起使用。
+Anyone holding **one valid password can read all contents**. Each password works on its own; none of them has to be combined with another.
 
-## 使用的成熟实现
+## Established implementations
 
-- `Konscious.Security.Cryptography.Argon2` 提供 Argon2id 密码派生；应用不自行实现 Argon2。
-- .NET `System.Security.Cryptography.AesGcm` 提供 AES-256-GCM；随机数来自 `RandomNumberGenerator`。
-- .NET `System.Formats.Tar` 的 PAX writer/reader 提供标准归档；文件名按 UTF-8 无损处理。
-- 默认 Zstd (Lv.3) 压缩由 `ZstdSharp.Port` 提供；可选 Brotli (Lv.6) 由 .NET `BrotliEncoder` / `BrotliDecoder` 提供。每个数据块独立压缩，也可以完全不压缩。
-- 可选恢复记录由内置、校验固定 SHA-256 的 `par2cmdline-turbo 1.5.0` 提供。随程序提供对应源码和 GPL 许可文本。
+- `Konscious.Security.Cryptography.Argon2` implements Argon2id password derivation. The application does not implement Argon2 itself.
+- .NET `System.Security.Cryptography.AesGcm` provides AES-256-GCM; randomness comes from `RandomNumberGenerator`.
+- .NET `System.Formats.Tar` supplies standard PAX archive writing and reading. Names are represented losslessly as UTF-8.
+- `ZstdSharp.Port` supplies the default Zstd (Lv.3) compression. Optional Brotli (Lv.6) uses .NET `BrotliEncoder` / `BrotliDecoder`. Blocks are compressed independently; no compression is also supported.
+- The optional recovery component is bundled `par2cmdline-turbo 1.5.0`, checked against a pinned SHA-256. Its corresponding source and GPL license text are distributed with the application.
 
-多密码信封格式、流式认证记录、文件系统处理和界面由本项目实现，审阅时应重点看这一部分。
+The multiple-password envelope, streaming authenticated records, filesystem handling, and user interface are this project's own code, and that is where review should focus.
 
-## 多密码为何相互独立
+## Independent passwords
 
-每个包生成一个随机 256 位内容密钥。每个密码拥有独立随机盐，使用 Argon2id 派生独立的密钥包装密钥，再以 AES-256-GCM 包装同一个内容密钥。包只保存盐、nonce、密文和认证标签，不保存明文密码，也没有可以“列出其他密码”的密码表。
+Each package receives a random 256-bit content key. Each password has an independent random salt and derives its own wrapping key through Argon2id. AES-256-GCM wraps the same content key independently under each wrapping key. The package stores salts, nonces, ciphertext, and authentication tags, never plaintext passwords or a password list that can expose the other passwords.
 
-容器格式 V1 的参数固定为：
+Container format V1 uses the following fixed parameters:
 
-| 参数 | 值 |
-|---|---|
-| Argon2 变体 | Argon2id，版本 1.3 |
-| 内存 | 64 MiB |
-| 迭代次数 | 3 |
-| 并行通道 | 4 |
-| 每个密码的随机盐 | 16 字节 |
-| 派生密钥、内容密钥 | 32 字节 |
-| AES-GCM nonce | 12 字节 |
-| AES-GCM 认证标签 | 16 字节 |
-| 密码数量 | 1–16 个 |
+| Parameter | Value |
+| --- | --- |
+| Argon2 variant | Argon2id, version 1.3 |
+| Memory | 64 MiB |
+| Iterations | 3 |
+| Parallel lanes | 4 |
+| Random salt per password | 16 bytes |
+| Derived wrapping key and content key | 32 bytes |
+| AES-GCM nonce | 12 bytes |
+| AES-GCM authentication tag | 16 bytes |
+| Password slots | 1–16 |
 
-这一 Argon2id 参数组来自 RFC 9106 给出的低内存选项。参数按格式版本固定，包内无法指定任意大的 KDF 内存或迭代次数来耗尽资源。
+These Argon2id parameters follow the lower-memory recommended option in [RFC 9106](https://www.rfc-editor.org/rfc/rfc9106.html). The format version fixes the cost parameters; an untrusted package cannot request arbitrary KDF memory or iteration counts.
 
-知道一个密码会得到内容密钥，但推不出其他密码；其他密码仍然可以被离线字典猜测。**整个包的实际保密性取决于最弱的那个密码**，加一个弱密码就会降低整个包的防护。已经发出去的副本无法撤回。
+A valid password reveals the content key, but the content key does not reveal the other passwords. Those passwords can still be attacked with offline dictionary guessing. **The weakest valid password determines the package's practical confidentiality**, so adding a weak password weakens the whole package. Copies already sent cannot be revoked.
 
-密码按原始 Unicode 字符序列编码，不去除首尾空格、不自动改变大小写、不进行 NFC/NFD 归一化。允许空字符串；任意一个密码为空时，整个包都可以用空输入解开，文件内容和文件名不再具有密码保密性。无效 Unicode、null、重复密码及超长输入会被拒绝。
+Passwords retain their exact Unicode character sequence. The application does not trim whitespace, change case, or normalize NFC/NFD. An empty string is allowed: if any password is empty, anyone can open the entire package with empty input, so its contents and filenames have no password confidentiality. Invalid Unicode, null, duplicates, and oversized input are rejected.
 
-V1 对所有密码统一使用 `0x00 || StrictUTF8(password)` 作为 Argon2id 输入。固定前缀让空字符串也能由当前依赖库处理，同时保持不同密码的编码一一对应；空字符串、空格和 U+0000 字符互不等同。
+V1 uses `0x00 || StrictUTF8(password)` as the Argon2id input for every password. The fixed prefix lets the dependency process an empty string while preserving a one-to-one encoding of passwords; an empty string, a space, and the U+0000 character remain distinct.
 
-## 内容认证与解析
+## Content authentication and parsing
 
-归档流分为至多 1 MiB 的原始块。每一块独立压缩后单独通过 AES-GCM 认证；压缩不划算的块保留原始编码。解码任意一块不需要前一块的压缩字典。Nonce 由随机前缀和递增的 64 位记录编号组成；每个包有新内容密钥。每条记录的附加认证数据包含完整逻辑包头的 SHA-256、记录编号、原始长度、编码长度、算法标识和保留字段。因此改动未使用的密码槽，也会在数据解密时被检测。
+The archive stream is divided into raw blocks of at most 1 MiB. Each block is independently compressed and then authenticated through AES-GCM. Compression falls back to raw encoding when it does not save space. A block does not depend on a previous block's compression dictionary. The nonce combines a random prefix with an increasing 64-bit record number; every package has a new content key. Each record's additional authenticated data includes the complete logical header's SHA-256, record number, raw length, encoded length, codec identifier, and reserved fields. Consequently, alteration of even an unused password slot is detected during content decryption.
 
-原始块和编码块长度都经过上限检查。解压使用调用方分配的固定大小缓冲，不按攻击者在压缩头中声称的尺寸分配内存。Zstd 必须是单个标准帧、无外部字典、窗口不超过 1 MiB、内容大小恰好等于认证声明；Brotli 必须恰好消耗一块数据并生成声明的字节数。额外压缩帧、尾随字节和长度不匹配会被拒绝。
+Raw and encoded lengths are bounded before processing. Decompression writes into fixed-size, caller-allocated buffers rather than allocating memory according to attacker-controlled frame declarations. Zstd must contain exactly one standard frame, use no external dictionary, have a window no larger than 1 MiB, and declare exactly the authenticated raw size. Brotli must consume the entire encoded block and produce exactly the declared number of bytes. Additional compressed frames, trailing bytes, and size mismatches are rejected.
 
-密钥槽和容器参数的逻辑包头保存为三个固定大小副本；定位尾部也保存为三个副本，各自带 SHA-256 检查值。损坏副本会被忽略，完整副本之间必须一致。检查值只用来挑出完好的副本，内容是否可信由 AES-GCM 认证判断。包头副本全部损坏时，需要恢复记录或原始备份。文件级目录信息位于 PAX 认证数据内，由内容认证和恢复记录一起保护。
+The logical key-slot/container header has three fixed-size physical replicas. The locating footer also has three replicas. Each copy has a SHA-256 checksum. Damaged copies are ignored, and valid copies must agree. The checksums only pick an intact replica; AES-GCM authentication decides whether the content is genuine. If every header replica is damaged, the recovery data or an original backup is needed. File-level directory information is inside the authenticated PAX stream and is additionally covered by the recovery data.
 
-一个专门的、已认证的零长度终止记录是格式的一部分。解密必须检查终止记录、精确的数据边界和实际文件尾，才能完成提交。
+A dedicated authenticated zero-length final record is mandatory. Extraction validates this record, exact payload boundaries, and the actual end of the file before publishing output.
 
-解密首先验证记录，再将认证后的明文交给归档解析器。解析器不信任文件名、声明长度、文件数量或归档类型：长度和数量有边界，声明总量与实际读出的总量必须一致，未知格式版本被拒绝。
+Each block is authenticated before its plaintext reaches decompression and archive parsing. The parser treats names, declared lengths, entry counts, and archive types as untrusted. Lengths and counts have limits, actual totals must match declarations, and unknown format versions are rejected.
 
-可见包头会泄露格式版本、密码槽数量、压缩选项、文件/目录数量及声明的总字节数；物理文件长度也可见。文件名、目录名和文件内容位于加密区域。`Inspect` 只读取格式信息，不验证密码和内容。
+The visible header reveals the format version, password-slot count, compression selection, file/directory counts, and declared aggregate byte count. Physical file size is also visible. Filenames, directory names, and file contents are encrypted. `Inspect` reads format information only; it checks neither the password nor the content.
 
-输出 EXE 和 `.2pw` 文件本身的名称也可见。界面默认根据源名称建议输出名称，因此包内名称加密不会隐藏你选择的外部包文件名；敏感时请改用不透露内容的输出名称。
+The outer EXE and `.2pw` filenames are also visible. The GUI suggests an output name based on the source name, so encryption of names inside the archive does not conceal the chosen package filename. Choose a neutral output name when that label is sensitive.
 
-## 路径、编码和文件一致性
+## Paths, encoding, and source consistency
 
-Windows 文件系统把名字视为 Unicode 字符序列。程序不把文件名转换到本地代码页，不对名称进行 Unicode 归一化；例如 `café.txt` 和由 `e` 加组合重音组成的名称可以分别保留。
+Windows treats filenames as Unicode character sequences. The application does not convert names through a local code page or normalize them. For example, `café.txt` and a name containing `e` followed by a combining accent remain distinct.
 
-文件系统访问使用 Unicode 和扩展长度路径；应用清单启用长路径。Windows 和目标文件系统仍有总路径和单个路径分量的长度限制，目标磁盘也要有足够的空间。Explorer 对很长路径的支持与底层文件 API 不完全相同。
+Filesystem access uses Unicode and extended-length paths, and the application manifest enables long-path awareness. Windows and the destination filesystem still impose total-path and component-length limits, and the destination needs enough free space. Explorer's support for very long paths differs from the underlying file APIs.
 
-解包只允许安全的相对路径，拒绝绝对路径、盘符、UNC 路径、`..`、备用数据流语法、保留设备名、名称冲突，以及不适合普通 Windows 文件夹的末尾点/空格等名称。遇到这些名称时直接报错，不会改名后继续。
+Extraction accepts only safe relative paths. It rejects absolute paths, drive letters, UNC paths, `..`, alternate-stream syntax, reserved device names, ambiguous names, collisions, and names ending in dots or spaces that are unsuitable for ordinary Windows directories. Such names cause an error; nothing is renamed to work around them.
 
-隐藏项和系统项也会打包；任何一项扫描失败，整个操作都会失败。以下输入会直接报错：
+Hidden and system entries are packaged too, and any scanning failure fails the whole operation. The following inputs cause an error:
 
-- 符号链接、目录联接及其他重解析点，包括可能需要云端取回的占位项；
-- 除下载标记 `Zone.Identifier` 以外的 NTFS 备用数据流；该标记在 64 KiB 上限内按原始字节保存，超限报错；
-- EFS 加密、设备和离线文件属性；
-- 无法读取、正在被独占使用、或打包过程中检测到变化的源项；
-- 不能在普通 Windows 目标目录无歧义表示的名称。
+- Symbolic links, directory junctions, and other reparse points, including placeholders that may require cloud hydration.
+- NTFS alternate data streams other than the download marker `Zone.Identifier`. That marker is preserved as original bytes up to 64 KiB; larger markers are rejected.
+- EFS encryption, device attributes, and offline file attributes.
+- Entries that cannot be read, are exclusively locked, or are detected changing during packaging.
+- Names that cannot be represented unambiguously in a normal Windows destination.
 
-还原的内容包括文件字节、文件和目录名称、空目录、支持的时间戳和常用属性。以下内容不保留：NTFS ACL 和所有者、硬链接关系、稀疏分配布局、短文件名、文件 ID、审计信息和其他文件系统私有元数据。硬链接会还原为独立文件，稀疏文件可能占用更多磁盘空间。
+Restored: file bytes, file and directory names, empty directories, supported timestamps, and common attributes. Not preserved: NTFS ACLs and owners, hard-link relationships, sparse allocation layout, short names, file IDs, audit information, and other filesystem-specific metadata. Hard-linked content is restored as separate files, and sparse content can take more disk space.
 
-打包前后会比对文件清单，发现普通的并发修改就报错。程序不做 VSS 快照，正在写入的数据库要先用对应软件导出一致的备份再打包。
+The file inventory is compared before and after packaging, and ordinary concurrent changes cause an error. There is no VSS snapshot, so export a consistent backup of a live database with its own tools before packaging it.
 
-## 原子发布、取消与故障
+## Atomic publication, cancellation, and failures
 
-创建时归档/压缩数据直接流入加密层，不先生成明文临时归档。最终包先写到同目录的临时文件，成功后以不覆盖方式发布。
+During creation, the archive/compression stream goes directly into encryption without an intermediate plaintext archive. The encrypted result is first written to a temporary file in its destination directory, then published without overwriting an existing file.
 
-解包写到一个新建的暂存目录，目录 ACL 限制为当前用户和 SYSTEM；完成全部认证、路径检查、长度检查之后，再以不覆盖方式重命名到新目标目录。目标已经存在或同时被其他进程创建时，操作失败，已有内容保持原样。
+Extraction creates a private staging directory whose ACL permits the current user and SYSTEM. Only after all authentication, path, and length checks pass is it renamed to a new destination without overwriting. A destination that already exists, or is created concurrently, causes failure and is preserved.
 
-暂存目录与恢复工作区必须位于支持持久 ACL 的文件系统上。程序根据实际文件句柄查询卷能力，在创建时原子设置受保护的 DACL，并读回验证所有者是当前用户，且仅当前用户与 SYSTEM 拥有可继承的完全控制权限。已有路径不复用，也不修改其权限。不支持持久 ACL 的 FAT/exFAT 目标、无法查询能力的提供程序，或无法确认严格权限的目录会直接报错；解包目标和恢复工作区请放在本地 NTFS 磁盘。加密时如果恢复工作区建不起来（例如输出位置在 exFAT 上），加密包照常生成，但不带恢复记录，界面会提示这一点。
+Staging directories and recovery workspaces require a filesystem with persistent ACL support. The application queries volume capabilities through an actual file handle, atomically supplies a protected DACL at creation, and reads it back to verify the current user owns the directory and only that user and SYSTEM receive inheritable full control. Existing paths are neither reused nor given new permissions. FAT/exFAT destinations without persistent ACLs, providers whose capabilities cannot be queried, and directories whose strict permissions cannot be verified cause an error. Use local NTFS for extraction destinations and recovery workspaces. If the recovery workspace can't be created during encryption (for example when the output is on exFAT), the package is still written, without recovery data, and the app says so.
 
-是否支持备用数据流同样通过实际卷能力确认。只有卷明确不支持命名流时，才把该平台对应的“不支持枚举”错误视为没有备用流；能力查询失败时按错误处理。
+Named-stream support is also checked against the actual volume capabilities. A provider's corresponding unsupported-enumeration error is treated as absence of alternate streams only when the volume explicitly lacks named-stream support. A failed capability query is treated as an error.
 
-正常异常或取消会触发清理。断电、强制终止、磁盘损坏或清理权限丢失，可能留下临时文件或暂存目录。临时明文用普通方式删除，SSD、备份、文件系统日志或快照里可能还有残留。
+Ordinary exceptions and cancellation trigger cleanup. Power loss, forced termination, disk damage, or lost cleanup permissions can leave temporary files or staging directories. Temporary plaintext is deleted normally, so SSDs, backups, filesystem journals, and snapshots may retain copies.
 
-## 自解密 EXE 的信任边界
+## Trust boundary of a standalone EXE
 
-独立 EXE 内含程序运行所需组件，不要求收件人另装 .NET 或 2Password。自动布局按最终加密大小选择：能在 Windows 可执行文件限制内保存时，将内容内嵌到 EXE；超过限制时输出一个解密 EXE 和配套 `.2pw` 文件。分离模式下必须把两个文件一起保存、复制；可在界面中主动选择分离模式。
+The extraction EXE includes its runtime and does not require the recipient to install .NET or 2Password. Automatic layout uses the final encrypted size: a package is embedded when it fits within the Windows executable limit, otherwise the output is an extraction EXE plus a sibling `.2pw` data file. Both files must be kept and copied together in detached mode; this layout can also be selected explicitly in the interface.
 
-单个 EXE 必须小于 4 GiB。压缩后能满足限制的较大原始数据仍可使用内嵌模式；分离数据使用 64 位长度，原始内容上限为 16 TiB，且受可用空间、条目数、路径及元数据资源限制约束。分离引用只允许一个同目录的安全 `.2pw` 文件名，并绑定其逻辑包头 SHA-256；不支持路径、URL 或跨目录寻址。引用描述和定位尾部也有三个副本。
+A single EXE must be smaller than 4 GiB. Larger source data can still be embedded if compression makes the final EXE fit. Detached data uses 64-bit lengths with a 16 TiB raw-content limit, subject to available space, entry counts, paths, and metadata resource limits. The reference permits only a safe sibling `.2pw` basename bound to the data container's logical-header SHA-256. It accepts no URLs, path components, or cross-directory references. The descriptor and locating footer also have three replicas.
 
-数据认证只覆盖加密内容。EXE 本身是否可信，要看它的来源。
+Data authentication covers the encrypted content only. Whether the EXE itself can be trusted depends on where it came from.
 
-被人恶意替换的 EXE 可以在密码输入时窃取密码。请只运行来源可信的 EXE，并通过可信渠道核对发布版本或校验值。第三方提供的数据包也可由自己信任的已安装 2Password 程序打开，以减少直接运行陌生 EXE 的必要性。
+A maliciously replaced EXE can steal passwords when they are entered. Run only executables from trusted sources, and verify the release or its checksums through trusted channels. Packages supplied by third parties can be opened as data using a trusted installed application, reducing the need to execute an unfamiliar EXE.
 
-以下情况不在保护范围内：已控制当前用户会话的恶意软件、键盘记录器、管理员或内核级攻击、内存转储、屏幕捕获、弱密码，以及用户主动分享解密后的内容。代码会清零自己控制的密钥和字节缓冲；托管字符串和 KDF 库内部的工作内存无法保证清零。
+Outside the protection scope: malware controlling the current user session, keyloggers, administrator or kernel compromise, memory dumps, screen capture, weak passwords, and deliberate sharing of decrypted contents. The application clears the key and byte buffers it controls; managed strings and the KDF library's internal memory cannot be guaranteed to be cleared.
 
-## 管理员权限与右键菜单
+## Administrator rights and the right-click menu
 
-程序平时以普通权限运行。只有用户点“以管理员身份重试”或“以管理员身份运行”时，才会通过 UAC 启动新的管理员进程，旧窗口随后关闭。新进程从命令行收到界面语言、主题、源文件和目标位置。密码不经命令行传递，需要重新输入。
+The app runs with normal rights. Only "Retry as administrator" or "Run as administrator" starts a new elevated process through UAC, and the old window then closes. The new process gets the interface language, theme, source and destination on its command line. Passwords are never passed on the command line and have to be entered again.
 
-Windows 会拦截普通权限程序向管理员窗口的拖放。管理员窗口只放行三条拖放用的窗口消息：`WM_DROPFILES`、`WM_COPYDATA` 和 `0x0049`。拖入的路径和普通拖放一样只在界面中打开，加密或解密仍要输入密码并点击按钮。
+Windows blocks drag and drop from normal-rights programs into elevated windows. The elevated window lets three drop messages through: `WM_DROPFILES`, `WM_COPYDATA` and `0x0049`. A dropped path only opens in the interface, as with a normal drop. Encrypting or decrypting still needs a password and a click.
 
-右键菜单只写当前用户的 `HKCU\Software\Classes`，命令指向当前程序的路径。关闭时只删除指向本程序的项，安装版卸载时会做同样的清理。
+The right-click menu writes only to the current user's `HKCU\Software\Classes`, and its commands point at the running executable. Turning it off removes only entries that point at this executable. Uninstalling the installed version does the same cleanup.
 
-## PAR2 恢复记录
+## PAR2 recovery data
 
-恢复记录由 par2cmdline-turbo 对加密后的数据生成，不接触明文，也不需要密码。它和加密数据存在同一个文件里：单个 EXE 是 `[程序][加密数据][恢复记录][尾部]`，双文件包的 `.2pw` 是 `[加密数据][恢复记录][尾部]`。尾部的三个副本记录加密数据的位置、长度和恢复记录的长度。EXE 的程序部分不在恢复范围内；程序部分损坏时，可以用另一份 2Password 打开这个 EXE。
+par2cmdline-turbo generates the recovery data from the encrypted data. It never sees plaintext and needs no password. The recovery data lives in the same file as the encrypted data: a single EXE is `[program][encrypted data][recovery data][trailer]`, and the `.2pw` of a two-file package is `[encrypted data][recovery data][trailer]`. The three trailer copies record where the encrypted data starts, its length and the recovery data's length. The program part of the EXE is not covered; if it is damaged, open the EXE with another copy of 2Password.
 
-三个尾部副本紧挨着放在文件最后 192 字节，一个坏扇区或文件尾被截断就会全部丢失。这时程序扫描整个文件重新定位：先找到一份校验通过的头部副本，再从恢复记录里找一个 FileDesc 包读出加密数据的长度。三份头部副本内容相同，加密数据的起点因此有三种可能，程序用恢复记录里的块校验挑出对的那个。找到后，检查会报告“文件尾部损坏”，修复会补回损坏的块并重写尾部。截断后剩下的恢复块够用才能修复；切进加密数据就修不了。单个 EXE 的三份头部副本和尾部同时全坏时，也无法定位。
+The three trailer copies sit next to each other in the last 192 bytes, so one bad sector or a truncated file loses all of them. The app then scans the whole file instead. It finds a header copy that passes its checksum, then a FileDesc packet in the recovery data that records the length of the encrypted data. The three header copies are identical, which leaves three possible starting points; the block checksums in the recovery data pick the right one. Checking then reports a damaged trailer, and repair restores any damaged blocks and writes a new trailer. A truncated file can be repaired only if enough recovery blocks remain; a cut into the encrypted data can't be repaired. In a single EXE, if all three header copies are lost along with the trailer, the data can't be located either.
 
-尾部全坏的单个 EXE，双击后只会打开普通的 2Password，拖进窗口也认不出来。这时用另一份 2Password 的“修复加密包…”选中它，修好以后就恢复正常。
+A single EXE with a destroyed trailer opens as a plain copy of 2Password when double-clicked, and dragging it into a window doesn't recognize it. Select it with "Repair a package…" in another copy of 2Password; once repaired it works normally again.
 
-参数用 par2cmdline-turbo 的默认值：块大小约为加密数据的 1/2000，取 4 字节的倍数；内存和线程数由 par2 自己决定。冗余默认 5%，可选 10% 和 20%。恢复能力按受损块计算，5% 冗余大约能修复 5% 的块。少量错误散落在很多块里时，也会用完恢复块。
+The parameters are par2cmdline-turbo's defaults: a block size of about 1/2000 of the encrypted data, rounded to a multiple of 4 bytes, with memory and thread count left to par2. Redundancy is 5% by default, with 10% and 20% as options. Capacity is counted in damaged blocks, so 5% redundancy repairs roughly 5% of the blocks. A few errors spread across many blocks can still use up the recovery blocks.
 
-读取恢复记录时，程序逐个检查 PAR2 包的长度和 MD5。损坏的包被跳过，扫描从下一个包标记继续，所以一处损坏只损失一个包。只有描述这份加密数据的包会交给原生工具：文件名固定为 `payload`，长度、块大小和文件 ID 都要对得上，且只能有一个恢复集。创建者信息和其他类型的包被丢弃，相互冲突的元数据直接报错。
+When reading the recovery data, the app checks each PAR2 packet's length and MD5. A damaged packet is skipped and scanning resumes at the next packet marker, so one damaged spot costs one packet. Only packets that describe this encrypted data reach the native tool: the file name must be `payload`, the length, block size and file ID must match, and there must be exactly one recovery set. Creator packets and other packet types are dropped. Conflicting metadata is an error.
 
-检查不调用原生工具。程序按块计算加密数据的 MD5，和恢复记录里的校验表比对，得出损坏的块数。
+Checking doesn't run the native tool. The app hashes the encrypted data block by block and compares the MD5 values with the checksum table in the recovery data to count damaged blocks.
 
-修复时，加密数据和筛选过的恢复记录先复制到权限受限的工作区，由 par2 在副本上重建。重建结果逐块核对校验表和整体 MD5 后，程序只把损坏的块写回原文件。修复期间其他进程只能读这个文件。
+To repair, the app copies the encrypted data and the filtered recovery data into a restricted workspace, and par2 rebuilds the copy. The rebuilt data is checked against every block checksum and the whole-file MD5, and then only the damaged blocks are written back into the original file. Other processes can only read the file while the repair runs.
 
-正常解包只做一次受认证的流式读取。密码未匹配任何槽时直接失败，不启动修复。若容器、数据或归档验证发现损坏，而包里有恢复记录，应用会在目标位置旁的工作区修好一份副本，再从副本完整解包。原文件不改动，首次尝试的临时明文会被清理。勾选“先检查并修复，再解密”时，解包前会先完整检查一遍。每块数据始终在认证通过后才进入解压器。
+Normal extraction uses one authenticated streaming pass. A password that matches no slot fails directly and never starts a repair. When container, data or archive validation finds damage and the package has recovery data, the app repairs a copy in a workspace next to the destination and runs a complete extraction from that copy. The original file is not changed, and plaintext staged by the first attempt is cleaned up. With "Check and repair before decrypting" selected, the whole package is checked before extraction. Every block is authenticated before decompression.
 
-PAR2 的 MD5 只用来发现损坏，防篡改靠 AES-GCM：重建后的数据仍要通过 AES-GCM 认证，程序也不会执行重建出来的 EXE。
+PAR2's MD5 only detects damage; protection against tampering comes from AES-GCM. Rebuilt data still has to pass AES-GCM authentication, and the app never runs a rebuilt EXE.
 
-## 验证与审阅
+## Verification and review
 
-测试工程包含公开密码学已知答案、独立格式解码、逐文件 SHA-256 对比，以及恶意/损坏输入与文件系统边界案例。运行：
+The test project includes public cryptographic known-answer vectors, independent format decoding, per-file SHA-256 comparisons, malicious/corrupted inputs, and filesystem boundary cases:
 
 ```powershell
 dotnet run --project tests/TwoPassword.Tests -c Release
 ```
 
-测试报告输出到被 Git 忽略的 `artifacts/test-results.json`，记录运行环境和每项测试的结果。
+The report is written to the Git-ignored `artifacts/test-results.json` and records the environment and every test result.
 
-公开向量测试检查依赖库和 API 的用法。项目目前没有做过第三方密码学审计或渗透测试。审阅时建议重点看信封组合、归档解析边界、文件系统竞态、资源限制、更新与签名链，以及错误恢复。
+Public-vector checks validate how the dependencies and APIs are used. The project has not had a third-party cryptographic audit or penetration test. Review should focus on envelope composition, archive boundaries, filesystem races, resource limits, update and signing trust, and failure recovery.
 
-## 主要参考
+## Primary references
 
-- [RFC 9106：Argon2 参数与测试向量](https://www.rfc-editor.org/rfc/rfc9106.html)
-- [.NET AesGcm.Encrypt：nonce 与附加认证数据要求](https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.aesgcm.encrypt?view=net-10.0)
-- [BoringSSL 官方 AES-GCM 公开测试向量](https://boringssl.googlesource.com/boringssl/+/ed22bbb42a36ba6878a2e68b34d43036c221e763/crypto/cipher_extra/test/cipher_tests.txt)
-- [Microsoft：Windows 路径长度及 Unicode 名称](https://learn.microsoft.com/windows/win32/fileio/maximum-file-path-limitation)
-- [Microsoft：Windows 文件路径格式](https://learn.microsoft.com/dotnet/standard/io/file-path-formats)
-- [Microsoft：单文件应用发布与自包含运行时](https://learn.microsoft.com/dotnet/core/deploying/single-file/overview)
-- [ZstdSharp 官方项目](https://github.com/oleg-st/ZstdSharp)
-- [PAR2 官方格式说明](https://parchive.sourceforge.net/docs/specifications/parity-volume-spec/article-spec.html)
-- [par2cmdline-turbo 官方项目](https://github.com/animetosho/par2cmdline-turbo)
+- [RFC 9106: Argon2 parameters and test vectors](https://www.rfc-editor.org/rfc/rfc9106.html)
+- [.NET AesGcm.Encrypt: nonce and additional authenticated data](https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.aesgcm.encrypt?view=net-10.0)
+- [Official BoringSSL AES-GCM public test vectors](https://boringssl.googlesource.com/boringssl/+/ed22bbb42a36ba6878a2e68b34d43036c221e763/crypto/cipher_extra/test/cipher_tests.txt)
+- [Microsoft: Windows path length and Unicode names](https://learn.microsoft.com/windows/win32/fileio/maximum-file-path-limitation)
+- [Microsoft: Windows file path formats](https://learn.microsoft.com/dotnet/standard/io/file-path-formats)
+- [Microsoft: single-file deployment and self-contained runtimes](https://learn.microsoft.com/dotnet/core/deploying/single-file/overview)
+- [ZstdSharp official project](https://github.com/oleg-st/ZstdSharp)
+- [PAR2 format specification](https://parchive.sourceforge.net/docs/specifications/parity-volume-spec/article-spec.html)
+- [par2cmdline-turbo official project](https://github.com/animetosho/par2cmdline-turbo)

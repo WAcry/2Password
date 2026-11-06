@@ -403,7 +403,7 @@ namespace TwoPassword.InstallerSmoke {
     $expectedFiles = [ordered]@{
         '2Password.exe' = (Join-Path $repo 'artifacts/publish/win-x64/2Password.exe')
         'README.md' = (Join-Path $repo 'README.md')
-        'README.en.md' = (Join-Path $repo 'README.en.md')
+        'README.zh.md' = (Join-Path $repo 'README.zh.md')
         'THIRD-PARTY-NOTICES.txt' = (Join-Path $repo 'THIRD-PARTY-NOTICES.txt')
     }
     foreach ($entry in $expectedFiles.GetEnumerator()) {
@@ -539,7 +539,7 @@ namespace TwoPassword.InstallerSmoke {
                     [TwoPassword.InstallerSmoke.NativeMsi]::MsiQueryProductStateW($ownedCode) -eq -1
                 )
             }
-            foreach ($name in @('2Password.exe','README.md','README.en.md','THIRD-PARTY-NOTICES.txt')) {
+            foreach ($name in @('2Password.exe','README.md','README.zh.md','THIRD-PARTY-NOTICES.txt')) {
                 Assert-Check "Uninstall removes $name" (-not (Test-Path -LiteralPath (Join-Path $installDirectory $name)))
             }
             Assert-Check 'Start Menu shortcut and product folder are removed' (-not (Test-Path -LiteralPath $menuDirectory))

@@ -1,5 +1,7 @@
 # 2Password core: schema V1
 
+[English](CoreDesign.md) · [简体中文](CoreDesign.zh.md)
+
 This document describes the initial **V1** format implemented in `TwoPassword.Core`. It stores authenticated encrypted content and optional PAR2 recovery data inside the package. The application writes and reads this one schema.
 
 ## Dependencies and data flow

@@ -30,7 +30,7 @@
           </Component>
           <Component Id="Documentation" Guid="2235B167-41B8-4809-A9EA-782F1CDAF64E">
             <File Id="Readme" Source="$(var.RepoRoot)\README.md" />
-            <File Id="ReadmeEnglish" Source="$(var.RepoRoot)\README.en.md" />
+            <File Id="ReadmeChinese" Source="$(var.RepoRoot)\README.zh.md" />
             <File Id="ThirdParty" Source="$(var.RepoRoot)\THIRD-PARTY-NOTICES.txt" />
             <RegistryValue Root="HKCU" Key="Software\2Password" Name="Documentation" Type="integer" Value="1" KeyPath="yes" />
           </Component>

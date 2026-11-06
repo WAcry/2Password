@@ -36,7 +36,7 @@ try {
     Copy-Item -LiteralPath $exe -Destination (Join-Path $release "2Password-$Version-win-x64.exe") -Force
     Copy-Item -LiteralPath (Join-Path $repo 'vendor/par2/par2cmdline-turbo-1.5.0.tar.xz') -Destination $release -Force
     $portable = Join-Path $release "2Password-$Version-win-x64-portable.zip"
-    Compress-Archive -LiteralPath $exe,(Join-Path $repo 'README.md'),(Join-Path $repo 'README.en.md'),(Join-Path $repo 'THIRD-PARTY-NOTICES.txt') -DestinationPath $portable -Force
+    Compress-Archive -LiteralPath $exe,(Join-Path $repo 'README.md'),(Join-Path $repo 'README.zh.md'),(Join-Path $repo 'THIRD-PARTY-NOTICES.txt') -DestinationPath $portable -Force
     $wix = Join-Path $toolDir 'wix.exe'
     # Run the pinned WiX 4 tool on the maintained SDK runtime; no global setting changes.
     $env:DOTNET_ROLL_FORWARD = 'LatestMajor'

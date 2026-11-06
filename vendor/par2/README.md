@@ -1,5 +1,7 @@
 # Pinned PAR2 distribution
 
+[English](README.md) · [简体中文](README.zh.md)
+
 This directory contains the unmodified **par2cmdline-turbo 1.5.0** Windows x64 executable, its complete corresponding source distribution, and GPL-2.0-or-later COPYING file. The tool runs as a separate process and is not linked into the managed application.
 
 Official upstream: https://github.com/animetosho/par2cmdline-turbo/releases/tag/v1.5.0
