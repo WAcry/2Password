@@ -88,6 +88,10 @@ During creation, the archive/compression stream goes directly into encryption wi
 
 Extraction creates a private staging directory whose ACL permits the current user and SYSTEM. Only after all authentication, path, and length checks pass is it renamed to a new destination without overwriting. A destination that already exists, or is created concurrently, causes failure and is preserved.
 
+Staging directories and PAR2 workspaces require a filesystem with persistent ACL support. The application queries volume capabilities through an actual file handle, atomically supplies a protected DACL at creation, and reads it back to verify the current user owns the directory and only that user and SYSTEM receive inheritable full control. Existing paths are neither reused nor given new permissions. FAT/exFAT destinations without persistent ACLs, providers whose capabilities cannot be queried, and directories whose strict permissions cannot be verified fail explicitly. Use local NTFS for extraction destinations and recovery workspaces. A successful ACL-setting call alone is not accepted as evidence that private access is enforced.
+
+Named-stream support is also checked against the actual volume capabilities. A provider's corresponding unsupported-enumeration error is treated as absence of alternate streams only when the volume explicitly lacks named-stream support. Failure to query capabilities never silently becomes a safe result.
+
 Ordinary exceptions and cancellation trigger cleanup. Power loss, forced termination, disk damage, or lost cleanup permissions can leave temporary files or staging directories. Deleting temporary plaintext is not secure erasure; SSDs, backups, filesystem journals, and snapshots may retain copies.
 
 ## Trust boundary of a standalone EXE

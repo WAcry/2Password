@@ -253,8 +253,9 @@ public static class PackageService
             string parent = Path.GetDirectoryName(destination)!;
             SafePaths.EnsureNoReparseAncestors(parent, true);
             CheckFreeSpace(parent, info.TotalBytes);
-            staging = Path.Combine(parent, ".2password-" + Guid.NewGuid().ToString("N") + ".extracting");
-            SafePaths.CreatePrivateDirectory(staging);
+            string candidate = Path.Combine(parent, ".2password-" + Guid.NewGuid().ToString("N") + ".extracting");
+            SafePaths.CreatePrivateDirectory(candidate);
+            staging = candidate; // take cleanup ownership only after private-directory verification succeeds
             using var guarded = new TarGuardStream(decrypted, info.TotalBytes, checked(info.Files + info.Directories));
             long total = 0;
             int files = 0, directories = 0;

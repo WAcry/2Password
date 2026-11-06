@@ -29,6 +29,7 @@ $expectedHashes = @{}
 $sourceSentinels = @{}
 $packages = [System.Collections.Generic.List[object]]::new()
 $attemptedProducts = [System.Collections.Generic.List[string]]::new()
+$shortcutDiagnostics = $null
 
 function Assert-Check([string]$Name, [bool]$Condition, [string]$Detail = '') {
     $checks.Add([pscustomobject]@{ Name = $Name; Passed = $Condition; Detail = $Detail })
@@ -62,8 +63,40 @@ function Invoke-Msi([string[]]$Arguments) {
 }
 
 function Same-Path([string]$First, [string]$Second) {
-    return [string]::Equals([IO.Path]::GetFullPath($First).TrimEnd('\'),
-        [IO.Path]::GetFullPath($Second).TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)
+    return Same-PathIdentity (Get-PathIdentity $First) (Get-PathIdentity $Second)
+}
+
+function Get-PathIdentity([string]$Path) {
+    try {
+        $identity = [TwoPassword.InstallerSmoke.NativeMsi]::ResolveExistingPath($Path)
+        return [pscustomobject]@{
+            InputPath = $Path
+            FinalPath = $identity.FinalPath
+            VolumeSerial = $identity.VolumeSerial
+            FileId = $identity.FileId
+            Error = $null
+        }
+    } catch {
+        return [pscustomobject]@{
+            InputPath = $Path
+            FinalPath = $null
+            VolumeSerial = $null
+            FileId = $null
+            Error = $_.Exception.Message
+        }
+    }
+}
+
+function Same-PathIdentity($First, $Second) {
+    # An 8.3 name, junction, or drive alias may identify the same object.
+    # Compare native identities, not hashes or display strings. An unresolved
+    # path or a different existing file/directory always fails this check.
+    return (
+        $null -eq $First.Error -and $null -eq $Second.Error -and
+        -not [string]::IsNullOrEmpty($First.FileId) -and
+        $First.VolumeSerial -ceq $Second.VolumeSerial -and
+        $First.FileId -ceq $Second.FileId
+    )
 }
 
 function Read-Package([string]$Path) {
@@ -122,10 +155,32 @@ try {
         Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 namespace TwoPassword.InstallerSmoke {
+    public sealed class PathIdentity {
+        public string FinalPath { get; set; }
+        public string VolumeSerial { get; set; }
+        public string FileId { get; set; }
+    }
     public static class NativeMsi {
+        [StructLayout(LayoutKind.Sequential)]
+        struct FileIdInfo {
+            public ulong VolumeSerial;
+            public ulong FileIdLow;
+            public ulong FileIdHigh;
+        }
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+        static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security,
+            uint disposition, uint flags, IntPtr template);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+        static extern uint GetFinalPathNameByHandleW(SafeFileHandle file, StringBuilder path, uint size, uint flags);
+        [DllImport("kernel32.dll", ExactSpelling = true, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool GetFileInformationByHandleEx(SafeFileHandle file, int informationClass,
+            out FileIdInfo information, uint size);
         [DllImport("msi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
         static extern uint MsiOpenDatabaseW(string path, IntPtr mode, out uint database);
         [DllImport("msi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
@@ -150,6 +205,39 @@ namespace TwoPassword.InstallerSmoke {
 
         static void Check(uint result, string operation) {
             if (result != 0) throw new Win32Exception((int)result, operation);
+        }
+        public static PathIdentity ResolveExistingPath(string path) {
+            if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path))
+                throw new ArgumentException("Expected an absolute, nonempty existing path.");
+            string full = Path.GetFullPath(path);
+            string extended = full.StartsWith(@"\\?\", StringComparison.Ordinal) ? full :
+                full.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + full.Substring(2) : @"\\?\" + full;
+            // FILE_READ_ATTRIBUTES, sharing read/write/delete, OPEN_EXISTING.
+            // BACKUP_SEMANTICS permits directory handles without changing ACLs.
+            using var handle = CreateFileW(extended, 0x80, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero);
+            if (handle.IsInvalid)
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Open path for shortcut verification: " + path);
+            var final = new StringBuilder(512);
+            uint length = GetFinalPathNameByHandleW(handle, final, (uint)final.Capacity, 0);
+            if (length == 0)
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Resolve final path: " + path);
+            if (length >= final.Capacity) {
+                if (length > 32768) throw new IOException("Resolved path exceeds Windows path limits.");
+                final.Capacity = checked((int)length + 1);
+                length = GetFinalPathNameByHandleW(handle, final, (uint)final.Capacity, 0);
+                if (length == 0 || length >= final.Capacity)
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "Resolve bounded final path: " + path);
+            }
+            // FileIdInfo (18) supplies the full 128-bit ID, including on ReFS.
+            if (!GetFileInformationByHandleEx(handle, 18, out FileIdInfo identity, (uint)Marshal.SizeOf<FileIdInfo>()))
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Read filesystem object identity: " + path);
+            if (identity.FileIdLow == 0 && identity.FileIdHigh == 0)
+                throw new IOException("The filesystem returned no usable object identity.");
+            return new PathIdentity {
+                FinalPath = final.ToString(),
+                VolumeSerial = identity.VolumeSerial.ToString("X16"),
+                FileId = identity.FileIdHigh.ToString("X16") + identity.FileIdLow.ToString("X16")
+            };
         }
         public static string GetProperty(string path, string property) {
             if (!System.Text.RegularExpressions.Regex.IsMatch(property, "^[A-Za-z][A-Za-z0-9_]*$"))
@@ -283,11 +371,33 @@ namespace TwoPassword.InstallerSmoke {
     $shortcut = $null
     try {
         $shortcut = $shell.CreateShortcut($shortcutPath)
+        $actualTarget = [string]$shortcut.TargetPath
+        $actualWorkingDirectory = [string]$shortcut.WorkingDirectory
+        $actualArguments = [string]$shortcut.Arguments
+        $targetIdentity = Get-PathIdentity $actualTarget
+        $expectedTargetIdentity = Get-PathIdentity (Join-Path $installDirectory '2Password.exe')
+        $workingIdentity = Get-PathIdentity $actualWorkingDirectory
+        $expectedWorkingIdentity = Get-PathIdentity $installDirectory
+        $targetMatches = Same-PathIdentity $targetIdentity $expectedTargetIdentity
+        $workingDirectoryMatches = Same-PathIdentity $workingIdentity $expectedWorkingIdentity
+        $argumentsMatch = $actualArguments -ceq ''
+        $shortcutDiagnostics = [ordered]@{
+            ShortcutPath = $shortcutPath
+            ActualTarget = $targetIdentity
+            ExpectedTarget = $expectedTargetIdentity
+            ActualWorkingDirectory = $workingIdentity
+            ExpectedWorkingDirectory = $expectedWorkingIdentity
+            ActualArguments = $actualArguments
+            ExpectedArguments = ''
+            TargetMatches = $targetMatches
+            WorkingDirectoryMatches = $workingDirectoryMatches
+            ArgumentsMatch = $argumentsMatch
+        }
+        $shortcutDetail = $shortcutDiagnostics | ConvertTo-Json -Depth 5 -Compress
+        Write-Host "Shortcut diagnostics: $shortcutDetail"
         Assert-Check 'Shortcut targets the installed executable' (
-            (Same-Path $shortcut.TargetPath (Join-Path $installDirectory '2Password.exe')) -and
-            (Same-Path $shortcut.WorkingDirectory $installDirectory) -and
-            $shortcut.Arguments -eq ''
-        )
+            $targetMatches -and $workingDirectoryMatches -and $argumentsMatch
+        ) $shortcutDetail
     } finally {
         if ($null -ne $shortcut) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shortcut) }
         [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
@@ -391,6 +501,7 @@ namespace TwoPassword.InstallerSmoke {
         UninstallExitCode = $uninstallExit
         FileSha256 = $expectedHashes
         SourceSentinelSha256 = $sourceSentinels
+        ShortcutDiagnostics = $shortcutDiagnostics
         Passed = ($null -eq $failure)
         Checks = @($checks.ToArray())
         Error = $(if ($failure) { $failure.Exception.Message } else { $null })

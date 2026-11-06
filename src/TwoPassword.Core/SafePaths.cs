@@ -1,6 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Security.AccessControl;
-using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 
 namespace TwoPassword.Core;
@@ -171,21 +169,7 @@ internal static class SafePaths
             if (before[i] != after[i]) throw new PackageException(Text.Get("打包期间源数据发生变化：{0}", before[i].RelativePath));
     }
 
-    internal static void CreatePrivateDirectory(string path)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            var user = WindowsIdentity.GetCurrent().User ?? throw new PackageException(Text.Get("无法确定当前 Windows 用户。"));
-            var security = new DirectorySecurity();
-            security.SetAccessRuleProtection(true, false);
-            security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.FullControl,
-                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
-            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl,
-                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
-            FileSystemAclExtensions.Create(new DirectoryInfo(Extended(path)), security);
-        }
-        else Directory.CreateDirectory(path);
-    }
+    internal static void CreatePrivateDirectory(string path) => WindowsPrivateDirectory.Create(path);
 
     internal static string? ReadZoneIdentifier(string path, string displayName)
     {
@@ -195,7 +179,10 @@ internal static class SafePaths
         if (handle.IsInvalid)
         {
             int error = Marshal.GetLastWin32Error();
-            if (error is 38 or 1 or 50) return null; // no streams / filesystem without stream support
+            if (error == 38) return null; // the stream enumeration reached EOF
+            if ((error is 1 or 50 or 87) &&
+                (WindowsFileSystemCapabilities.Query(path) & WindowsFileSystemCapabilities.NamedStreams) == 0)
+                return null; // absence of stream support was confirmed by the actual volume
             throw new PackageException(Text.Get("无法检查文件的数据流：{0} (Windows {1})", displayName, error));
         }
         do

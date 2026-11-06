@@ -8,7 +8,7 @@ This document describes the implementation in `TwoPassword.Core`. The applicatio
 - AES-256-GCM and SHA-256: .NET `System.Security.Cryptography`.
 - Archive serialization: .NET `System.Formats.Tar`, PAX format.
 - Independent block compression: `ZstdSharp.Port` 0.8.8 (Zstandard 1.5.7 implementation) or .NET Brotli. Default: Zstd.
-- Windows paths, streams, timestamps, ACLs: .NET filesystem APIs and the documented Windows stream-enumeration API.
+- Windows paths, streams, timestamps, ACLs: .NET filesystem APIs and documented Windows APIs for volume capabilities, atomic directory creation and stream enumeration.
 
 Creation streams file data into PAX TAR, fills at most a 1 MiB plaintext block, optionally compresses that block, and encrypts it. No plaintext intermediate TAR file is written. A completed **encrypted** temporary payload is used to decide between an embedded EXE and a detached dataset.
 
@@ -162,12 +162,16 @@ Source scanning includes all entries and fails on inaccessible entries. Files ar
 
 Extraction rejects traversal, absolute paths, invalid/device names, duplicate paths, case-insensitive collisions, missing parents, unsupported types, oversized metadata and inconsistent authenticated totals. It creates only new files beneath a private random staging directory in the destination's parent, authenticates the whole stream, restores metadata, then performs a no-overwrite directory rename.
 
-The staging/final directory ACL grants full control to the current Windows user and SYSTEM. Original ACLs, owners, EFS identity, hard-link relationships, NTFS compression/sparsity and non-Zone ADS are not reproduced. Sparse input bytes are retained exactly, but restored files may occupy their full logical size.
+Before creating staging, the shared `WindowsPrivateDirectory` helper opens the existing parent and requires its actual volume to report `FILE_PERSISTENT_ACLS`. An unavailable capability query or a volume without persistent ACLs fails before any plaintext files are written. Native `CreateDirectoryW` supplies the protected DACL atomically and rejects an existing path. The helper reads back the raw security descriptor and requires the current user as owner, a protected present DACL, and exactly the distinct current-user/SYSTEM Allow FullControl ACEs with object/container inheritance and no additional ACEs. A validation failure attempts to remove only the newly created empty directory, never an unexpected tree. PAR2 workspaces use the same helper.
+
+Local NTFS is the validated destination. FAT32 and exFAT cannot be extraction or recovery workspace destinations because they lack persistent ACLs. A network filesystem is accepted only if its provider can report the required capability and preserve the exact verified DACL; generic SMB/NAS compatibility is not promised. Source stream enumeration treats EOF normally, but errors 1/50/87 are considered absence of stream support only after a successful volume query confirms that `FILE_NAMED_STREAMS` is absent. A query failure or a provider claiming streams but refusing enumeration fails explicitly. These checks use the documented [volume capability flags](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getvolumeinformationbyhandlew).
+
+The staging/final directory retains that private ACL. Original ACLs, owners, EFS identity, hard-link relationships, NTFS compression/sparsity and non-Zone ADS are not reproduced. Sparse input bytes are retained exactly, but restored files may occupy their full logical size.
 
 ## Resource and operational boundaries
 
 - Per-block raw/decompressed data: at most 1 MiB.
-- Source file bytes: at most 16 TiB.
+- Aggregate uncompressed primary file-content bytes: at most 16 TiB; this is not a ciphertext-output size limit.
 - Entry count: at most 1,000,000, subject to the metadata budget below.
 - Windows full/relative paths: fewer than 32,700 UTF-16 code units; components at most 255.
 - Conservative retained metadata budget: 128 MiB per source inventory (before/after may coexist), and 256 MiB for extraction. Pending directory enumeration is charged before being retained. Exceeding the budget fails explicitly.

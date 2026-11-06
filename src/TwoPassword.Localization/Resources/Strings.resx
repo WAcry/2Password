@@ -239,4 +239,11 @@
   <data name="恢复完成，正在重新认证并解包。" xml:space="preserve"><value>Repair is complete. Reauthenticating and extracting the package.</value></data>
   <data name="还原目标已存在。请选择新的文件夹，程序不会合并或覆盖。" xml:space="preserve"><value>The restore destination already exists. Choose a new folder; existing data will not be merged or overwritten.</value></data>
   <data name="恢复记录检查失败，未提交解包结果。" xml:space="preserve"><value>Recovery verification failed. No extracted result was committed.</value></data>
+  <data name="创建私有工作目录需要 Windows。" xml:space="preserve"><value>Creating a private workspace requires Windows.</value></data>
+  <data name="目标文件系统不支持持久访问控制列表（ACL）。请将解包或恢复工作区放在本地 NTFS 磁盘。" xml:space="preserve"><value>The destination filesystem does not support persistent access control lists (ACLs). Use a local NTFS drive for extraction or recovery workspaces.</value></data>
+  <data name="无法创建私有工作目录：{0} (Windows {1})" xml:space="preserve"><value>Could not create a private workspace: {0} (Windows error {1})</value></data>
+  <data name="无法验证私有工作目录的访问权限，已停止操作：{0}" xml:space="preserve"><value>Could not verify the private workspace permissions. The operation was stopped: {0}</value></data>
+  <data name="无法确认工作目录只允许当前用户和 SYSTEM 访问，已停止操作。" xml:space="preserve"><value>Could not confirm that the workspace allows access only to the current user and SYSTEM. The operation was stopped.</value></data>
+  <data name="查询文件系统能力需要 Windows。" xml:space="preserve"><value>Querying filesystem capabilities requires Windows.</value></data>
+  <data name="无法查询文件系统能力，已停止操作：{0} (Windows {1})" xml:space="preserve"><value>Could not query filesystem capabilities. The operation was stopped: {0} (Windows error {1})</value></data>
 </root>

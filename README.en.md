@@ -82,6 +82,7 @@ Healthy packages use the normal authenticated streaming extraction path without 
 - Insufficient recovery data causes failure without publishing a partial repair. Recovery data does not replace offline backups.
 - A 10% recovery setting describes recovery blocks. It **does not guarantee repair of any possible distribution of damage affecting 10% of the bytes**. Damage spread, missing volumes, and block size affect the result.
 - PAR2 uses its format's MD5/CRC damage detection. AES-GCM still provides payload authentication. Successful repair never bypasses password verification or content authentication, and the program does not automatically execute a repaired EXE.
+- A recovery set protects at most 2 TiB of ciphertext, including the launcher, and at most 32,768 source blocks rounded separately for each protected file. Exceeding either limit reports an error and retains the completed encrypted package.
 
 ## Encryption design
 
@@ -101,7 +102,7 @@ Critical headers, footers, and detached references have three checksummed copies
 
 Someone without a valid password can attempt offline password guessing or attack the implementation or operating environment. This project has not received an independent external security audit. **The weakest valid password determines the package's resistance to guessing.** Anyone who knows one password can read, copy, share, or re-encrypt all plaintext. Changing access requires creating and distributing a new package; already distributed old copies cannot be revoked.
 
-Outer file size, compression selection, password-slot count, and aggregate statistics are visible. Original filenames, directory structure, and file contents are encrypted. Container authentication does not establish the provenance of the EXE prefix, so executable trust and code signing remain separate concerns. See [Security design and limitations](docs/SECURITY.en.md) and the [format specification](src/TwoPassword.Core/CoreDesign.md).
+Outer file size, compression selection, password-slot count, and aggregate statistics are visible. Original filenames, directory structure, and file contents inside the container are encrypted. External EXE, data, and PAR2 filenames remain visible; the GUI suggests a name based on the source, which you can change. Container authentication does not establish the provenance of the EXE prefix, so executable trust and code signing remain separate concerns. See [Security design and limitations](docs/SECURITY.en.md) and the [format specification](src/TwoPassword.Core/CoreDesign.md).
 
 ## Filenames, long paths, and exact restoration
 
@@ -116,7 +117,11 @@ Outer file size, compression selection, password-slot count, and aggregate stati
 
 Source inventories and metadata are checked before and after packaging. Files are opened without allowing concurrent writers or deletion while being read. This is not a VSS snapshot; stop applications that continually modify the source, or first export a consistent backup using the relevant application.
 
-Extraction uses a new private staging directory accessible to the current user and SYSTEM. Only a complete successful result is renamed to the new destination, without overwriting existing data. Failures and cancellation clean up incomplete results. Creation does not generate an intermediate plaintext TAR file; package assembly and PAR2 repair use encrypted temporary files. Allow sufficient space for the source, output, and extraction or repair workspace.
+Extraction first checks the destination volume's security capabilities, creates a private staging directory, and reads back its permissions to confirm the required access is limited to the current user and SYSTEM. Only a complete successful result is renamed to the new destination, without overwriting existing data. Failures and cancellation clean up incomplete results. Creation does not generate an intermediate plaintext TAR file; package assembly and PAR2 repair use encrypted temporary files. Allow sufficient space for the source, output, and extraction or repair workspace.
+
+**Extraction destinations and PAR2 workspaces must support and enforce persistent Windows access permissions; local NTFS is recommended.** FAT32/exFAT cannot provide this workspace protection, so these operations fail explicitly. Complete extraction or recovery on NTFS first, then copy the finished files. Network locations must pass the same capability and permission checks; compatibility with every SMB server is not assumed. Reading and encrypting source files does not require preserving source ACLs. A source volume is treated as having no alternate streams only after its reported capabilities confirm that they are unsupported.
+
+The format permits up to 16 TiB of aggregate original file data and one million file/directory entries. Separate metadata memory budgets can impose lower limits on collections with many long names. Available disk space and the destination filesystem's per-file size limit also apply; see the security documentation for exact bounds.
 
 ## Development and builds
 

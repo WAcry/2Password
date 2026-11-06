@@ -25,7 +25,9 @@ try {
         dotnet run --project tests/TwoPassword.Localization.Tests -c Release --no-build
         if ($LASTEXITCODE -ne 0) { throw 'Localization and cross-language compatibility checks failed.' }
     }
-    dotnet publish src/TwoPassword.App -c Release -r win-x64 --self-contained true -o $publish -p:Version=$Version -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:DebugSymbols=false
+    # RID and bundle properties are local to App.csproj, so they do not change the
+    # referenced libraries' dependency graphs. Publishing is locked as well as building.
+    dotnet publish src/TwoPassword.App -c Release --self-contained true -o $publish -p:Version=$Version -p:RestoreLockedMode=true -p:DebugType=none -p:DebugSymbols=false
     if ($LASTEXITCODE -ne 0) { throw 'Self-contained publishing failed.' }
     $exe = Join-Path $publish '2Password.exe'
     if (-not (Test-Path -LiteralPath $exe)) { throw 'Published executable is missing.' }

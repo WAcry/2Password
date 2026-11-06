@@ -455,13 +455,7 @@ public static class RecoveryService
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException(Text.Get("PAR2 恢复组件需要 Windows x64。"));
         AssertAncestors(parent, false);
         string path = Path.Combine(parent, ".2pw-recovery-" + Guid.NewGuid().ToString("N"));
-        var identity = WindowsIdentity.GetCurrent().User ?? throw new IOException(Text.Get("无法确定当前 Windows 用户。"));
-        var acl = new DirectorySecurity();
-        acl.SetAccessRuleProtection(true, false);
-        foreach (var sid in new[] { identity, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null) })
-            acl.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl,
-                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
-        FileSystemAclExtensions.Create(new DirectoryInfo(Extended(path)), acl);
+        WindowsPrivateDirectory.Create(path);
         return path;
     }
 
