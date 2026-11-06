@@ -4,7 +4,7 @@
 
 Encrypt a file or folder into a single EXE with several passwords. Any one of them opens it. The recipient double-clicks the EXE to decrypt, with nothing to install.
 
-[![Windows build](https://github.com/WAcry/2Password/actions/workflows/build-release.yml/badge.svg)](https://github.com/WAcry/2Password/actions/workflows/build-release.yml)
+[![Build](https://github.com/WAcry/2Password/actions/workflows/build-release.yml/badge.svg)](https://github.com/WAcry/2Password/actions/workflows/build-release.yml)
 
 ![2Password](assets/screenshots/main-en.png)
 
