@@ -25,7 +25,7 @@ pwsh -File scripts/Test-Installer.ps1
 
 | 检查 | 通过 | 失败 |
 | --- | ---: | ---: |
-| 独立安全与文件往返 | 165 | 0 |
+| 独立安全与文件往返 | 187 | 0 |
 | 真实 PAR2 与按需恢复 | 24 | 0 |
 | 共享语言资源与跨语言操作 | 15 | 0 |
 | 真实自包含 EXE / CLI | 11 | 0 |
@@ -35,7 +35,7 @@ pwsh -File scripts/Test-Installer.ps1
 
 ## 常规安全与还原验证
 
-主测试项目 `tests/TwoPassword.Tests` 的完整本地记录为 **165 项通过，0 项失败，0 项跳过**。其重要覆盖包括：
+主测试项目 `tests/TwoPassword.Tests` 的完整本地记录为 **187 项通过，0 项失败，0 项跳过**。其重要覆盖包括：
 
 | 范围 | 实际检查 |
 | --- | --- |
@@ -50,6 +50,9 @@ pwsh -File scripts/Test-Installer.ps1
 | 恶意归档 | 穿越、设备名、重解析点、大小写冲突、重复条目、异常元数据与资源上限 |
 | 操作完整性 | 取消、源文件改变、目标已存在、失败后清理和最终提交保护 |
 | PAR2 元数据 | 21 个独立恶意输入用例，检查路径、描述符、Unicode 扩展、不同恢复集混用、校验与块数量限制 |
+| 工作区权限 | 22 个用例，包含真实 NTFS 权限及子目录继承、宽松父目录、并发创建和原始 ACL 的恶意构造；不支持持久 ACL 的能力策略明确拒绝 |
+
+权限测试读回真实 NTFS 安全描述符，并检查陌生主体、空或未保护 DACL、错误所有者、回调/对象 ACE、错误继承与权限范围。FAT/exFAT 的拒绝策略通过能力标志分支验证，未声称挂载实际 FAT/exFAT 介质完成测试。
 
 ## 实际 PAR2 与按需修复
 
@@ -111,6 +114,8 @@ WiX 构建使用 `-wx` 将警告视为错误。`scripts/Test-Installer.ps1` 对�
 - 用户在安装目录新增的文件卸载后仍然保留。
 - 项目源文件哨兵哈希在测试前后保持一致。
 
+快捷方式校验使用 Windows 卷标识及完整 128 位文件标识，确认实际指向安装的程序及工作目录，并要求无附加参数；原始路径、解析路径和标识都写入诊断报告。真实 NTFS 8.3 别名被正确识别为同一对象，不同文件或丢失目标仍被拒绝。
+
 脚本发现已有用户安装时会拒绝覆盖，以免把真实安装当成临时测试环境。
 
 ## 大文件与资源使用
@@ -154,4 +159,4 @@ pwsh -File scripts/Test-LargeFiles.ps1
 
 ---
 
-**English overview.** The repository includes reproducible adversarial tests, real PAR2 recovery tests, localization checks, actual copied self-extractor execution, and install/upgrade/uninstall tests. The primary suite passed 165 cases with no failures or skips. Local large-file cases processed 4,423,942,144-byte uncompressed data and an 8,589,934,715-byte PAX file, comparing full SHA-256 hashes after extraction. The approximately 341 MiB observed peak working set and timing figures describe these specific synthetic fixtures on one Windows host. They are not general performance guarantees or a substitute for an external security audit. Regular suites and installer/standalone checks gate GitHub Releases; large-file tests are available separately.
+**English overview.** The repository includes reproducible adversarial tests, real PAR2 recovery tests, localization checks, actual copied self-extractor execution, and install/upgrade/uninstall tests. The primary suite passed 187 cases with no failures or skips, including 22 workspace-permission regressions. Local large-file cases processed 4,423,942,144-byte uncompressed data and an 8,589,934,715-byte PAX file, comparing full SHA-256 hashes after extraction. The approximately 341 MiB observed peak working set and timing figures describe these specific synthetic fixtures on one Windows host. They are not general performance guarantees or a substitute for an external security audit. Regular suites and installer/standalone checks gate GitHub Releases; large-file tests are available separately.
