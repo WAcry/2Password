@@ -6,6 +6,19 @@ This document records reproducible verification performed on Windows x64 on 2026
 
 See [Security design](SECURITY.md) for cryptographic assumptions, filesystem restrictions, and the threat model.
 
+## Security boundary verification (2026-11-06)
+
+The local build completed with **0 warnings and 0 errors**. Core tests passed **253/253**, recovery tests **34/34**, shared localization tests **15/15**, and WPF integration tests **8/8**, with no Core tests skipped. The shared catalogs contain **197 pairs** covering **197 actual source keys**. This WPF run uses a synthetic MZ template and does not register menus. The multiselect, standalone-package, installation, and large-file results below retain their stated verification scope.
+
+- `PasswordIndependenceTests.cs`: independent decoding of password slots 2 and 16 with verification of the decrypted content; rejection of direct reuse of a known wrapping key or content key across slots; agreement between candidate checks with and without a known content key; and the 1024/1025 UTF-16-unit boundary for ASCII and non-BMP passwords.
+- `ProvenanceTests.cs`: Internet/Restricted markers on the input package reach every extracted file; archived local-zone claims cannot lower the restriction. Coverage includes separate EXE and dataset origins, UTF-8/UTF-16/ANSI URLs, ambiguous INI syntax, duplicate fields, control characters, size limits, unrelated ADS, and cleanup without publishing plaintext when marker writes fail.
+- `Par2MetadataTests.cs`: 64,000 repeated descriptions, repeated checksum tables, and Creator packets retain a bounded selected-packet set and the true end position; separate candidate-count/body-size/recovery-set budgets; conflicts, original packet order, and scan cancellation.
+- Recovery integration tests cover normal prechecking, direct and prechecked repair of damaged packages, detached-package provenance, and rejection of invalid origins without entering recovery.
+
+The same synthetic audit package containing **8,699,708 bytes and 64,000 additional FileDesc packets** passed the local application's command-line check with no damaged blocks in approximately **1.05 seconds**, including process startup. This is a single local observation, not a CI timing threshold; regression tests assert deduplication results, budgets, and cancellation semantics.
+
+Reproduce with `dotnet run --project tests/TwoPassword.Tests -c Release`, or use `--par2-only` / `--provenance-only` for the corresponding subset and its prerequisite tests. Additional local logs are `artifacts/security-*-tests.log`, `artifacts/security-build.log`, and `artifacts/security-original-sample-*.json`.
+
 ## Additional multiselect encryption verification (2026-11-06)
 
 This change adds independent packaging of each selected item and an Explorer multiselect entry point, while preserving compatibility with the encryption format and single-item creation flow. The full Core regression suite passed **218/218**, recovery tests **32/32**, shared localization tests **15/15**, WPF integration tests using the executable template published for this change **8/8**, and standalone EXE/CLI tests **15/15**. The installation and large-file figures below come from earlier verification; installation and large-file tests were not rerun for this change.

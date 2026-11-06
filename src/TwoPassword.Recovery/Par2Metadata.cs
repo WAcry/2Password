@@ -23,6 +23,11 @@ internal static class Par2Metadata
     private const int HeaderSize = 64;
     private const int MaxSourceBlocks = 32768;
     private const int MaxCreatorBody = 1024;
+    // Body bytes and object counts are separate limits: tiny packets must not create
+    // unbounded dictionaries, and large checksum tables must not exhaust memory.
+    internal const int MaxRecoverySets = 8;
+    internal const int MaxRetainedPackets = 65535 + 3;
+    internal const long MaxMetadataBytes = 8L * 1024 * 1024;
     private static readonly byte[] Magic = "PAR2\0PKT"u8.ToArray();
     private static readonly byte[] NameBytes = Encoding.ASCII.GetBytes(SourceName);
     private static readonly byte[] PaddedName = [.. NameBytes, 0];
@@ -42,6 +47,7 @@ internal static class Par2Metadata
 
     internal static Par2Set Read(FileStream file, long start, long length, long sourceLength, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         if (sourceLength <= 0 || start < 0 || length < 0 || start > file.Length - length)
             throw new InvalidDataException(Text.Get("恢复记录的位置无效。"));
         long blockSize = BlockSize(sourceLength);
@@ -54,10 +60,14 @@ internal static class Par2Metadata
             [RecoveryType] = (HeaderSize + 4 + blockSize, HeaderSize + 4 + blockSize),
             [CreatorType] = (HeaderSize + 4, HeaderSize + MaxCreatorBody),
         };
-        var found = new List<Candidate>();
+        var found = new Dictionary<string, Candidates>(StringComparer.Ordinal);
+        int retainedPackets = 0;
+        long retainedBytes = 0;
         byte[] header = new byte[HeaderSize], buffer = new byte[1024 * 1024];
         // Bounds the rescanning work when many overlapping candidates fail their checksums.
-        long budget = 2 * length + 64L * 1024 * 1024, hashed = 0;
+        const long allowance = 64L * 1024 * 1024;
+        long budget = length > (long.MaxValue - allowance) / 2 ? long.MaxValue : 2 * length + allowance;
+        long hashed = 0;
         long at = 0;
         while (at <= length - HeaderSize)
         {
@@ -72,17 +82,66 @@ internal static class Par2Metadata
                 continue;
             }
             long size = (long)declared;
-            if ((hashed += size) > budget) break;
-            int capture = type == RecoveryType ? 4 : (int)(size - HeaderSize);
+            if (size > budget - hashed) throw MetadataLimit();
+            hashed += size;
+            int capture = type == CreatorType ? 0 : type == RecoveryType ? 4 : (int)(size - HeaderSize);
             byte[] body = new byte[capture];
             if (Hash(file, start + at, size, header, body, buffer, ct))
             {
-                found.Add(new(at, size, type, Convert.ToHexString(header, 32, 16), body));
+                // A Main packet with a false set ID is not part of any valid set,
+                // and must not extend the reconstructed recovery region either.
+                if (type == MainType && !CryptographicOperations.FixedTimeEquals(MD5.HashData(body), header.AsSpan(32, 16)))
+                { at += size; continue; }
+                string setId = Convert.ToHexString(header, 32, 16);
+                if (!found.TryGetValue(setId, out var candidates))
+                {
+                    if (found.Count >= MaxRecoverySets) throw MetadataLimit();
+                    found.Add(setId, candidates = new Candidates());
+                }
+                // Track the physical end independently of retained representatives.
+                // Repeated metadata and Creator packets still belong to the region.
+                candidates.End = at + size;
+                if (type == RecoveryType)
+                {
+                    uint exponent = BinaryPrimitives.ReadUInt32LittleEndian(body);
+                    if (exponent < 65535 && !candidates.Recovery.ContainsKey(exponent))
+                    {
+                        Charge(body.Length);
+                        var candidate = new Candidate(at, size, body, Recovery: true);
+                        candidates.Recovery.Add(exponent, candidate);
+                        candidates.Ordered.Add(candidate);
+                    }
+                }
+                else if (type != CreatorType)
+                {
+                    string fileId = type == MainType ? "" : Convert.ToHexString(body, 0, 16);
+                    var identity = (type, fileId);
+                    if (candidates.Metadata.TryGetValue(identity, out var existing))
+                    {
+                        // Keep conflicts for validation of the selected file only;
+                        // unrelated FileIDs were ignored by the original reader.
+                        existing.Conflict |= !existing.Packet.Body.AsSpan().SequenceEqual(body);
+                    }
+                    else
+                    {
+                        Charge(body.Length);
+                        var candidate = new Candidate(at, size, body);
+                        candidates.Metadata.Add(identity, new(candidate));
+                        candidates.Ordered.Add(candidate);
+                    }
+                }
                 at += size;
             }
             else at = NextMarker(file, start, length, at + 8, buffer, ct);
         }
-        return Validate(found, sourceLength, blockSize, slices);
+        return Validate(found, sourceLength, blockSize, slices, ct);
+
+        void Charge(int bytes)
+        {
+            if (retainedPackets >= MaxRetainedPackets || bytes > MaxMetadataBytes - retainedBytes) throw MetadataLimit();
+            retainedPackets++;
+            retainedBytes += bytes;
+        }
     }
 
     /// <summary>Copies the selected packets, checking each one again as it is read.</summary>
@@ -141,50 +200,51 @@ internal static class Par2Metadata
         return length;
     }
 
-    private static Par2Set Validate(List<Candidate> found, long sourceLength, long blockSize, int slices)
+    private static Par2Set Validate(Dictionary<string, Candidates> found, long sourceLength, long blockSize, int slices, CancellationToken ct)
     {
-        found.RemoveAll(c => c.Type == MainType && !CryptographicOperations.FixedTimeEquals(MD5.HashData(c.Body), Convert.FromHexString(c.SetId)));
-        var sets = found.Where(c => c.Type == MainType).Select(c => c.SetId).Distinct(StringComparer.Ordinal).ToArray();
-        if (sets.Length == 0) throw new InvalidDataException(Text.Get("恢复记录缺少主元数据。"));
-        if (sets.Length > 1) throw new InvalidDataException(Text.Get("恢复记录里混有多个恢复集。"));
-        string setId = sets[0];
-        var packets = found.Where(c => c.SetId == setId).ToList();
-        long end = packets.Max(c => c.Offset + c.Size);
-
-        byte[] main = Single(packets, MainType, Text.Get("恢复记录的主元数据相互冲突。"))!;
+        ct.ThrowIfCancellationRequested();
+        Candidates? packets = null;
+        foreach (var set in found.Values)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!set.Metadata.ContainsKey((MainType, ""))) continue;
+            if (packets is not null) throw new InvalidDataException(Text.Get("恢复记录里混有多个恢复集。"));
+            packets = set;
+        }
+        if (packets is null) throw new InvalidDataException(Text.Get("恢复记录缺少主元数据。"));
+        var mainPacket = Single(packets, MainType, "", Text.Get("恢复记录的主元数据相互冲突。"))!;
+        byte[] main = mainPacket.Body;
         if (BinaryPrimitives.ReadUInt64LittleEndian(main) != (ulong)blockSize || BinaryPrimitives.ReadUInt32LittleEndian(main.AsSpan(8)) != 1)
             throw new InvalidDataException(Text.Get("恢复记录的块大小或文件数量与加密数据不符。"));
         byte[] fileId = main[12..28];
-
-        var descriptions = packets.Where(c => c.Type == FileDescType && c.Body.AsSpan(0, 16).SequenceEqual(fileId)).ToList();
-        packets.RemoveAll(c => c.Type == FileDescType && !descriptions.Contains(c));
-        byte[] description = Single(descriptions, FileDescType, Text.Get("恢复记录的文件描述相互冲突。"))
+        string fileIdentity = Convert.ToHexString(fileId);
+        var descriptionPacket = Single(packets, FileDescType, fileIdentity, Text.Get("恢复记录的文件描述相互冲突。"))
             ?? throw new InvalidDataException(Text.Get("恢复记录缺少文件描述。"));
+        byte[] description = descriptionPacket.Body;
         if (!description.AsSpan(56).SequenceEqual(PaddedName) ||
             BinaryPrimitives.ReadUInt64LittleEndian(description.AsSpan(48)) != (ulong)sourceLength ||
             !CryptographicOperations.FixedTimeEquals(MD5.HashData(description.AsSpan(32, 24 + NameBytes.Length)), fileId))
             throw new InvalidDataException(Text.Get("恢复记录描述的不是这份加密数据。"));
 
-        var checks = packets.Where(c => c.Type == ChecksumType && c.Body.AsSpan(0, 16).SequenceEqual(fileId)).ToList();
-        packets.RemoveAll(c => c.Type == ChecksumType && !checks.Contains(c));
-        byte[] table = Single(checks, ChecksumType, Text.Get("恢复记录的切片校验表相互冲突。"))
+        var tablePacket = Single(packets, ChecksumType, fileIdentity, Text.Get("恢复记录的切片校验表相互冲突。"))
             ?? throw new InvalidDataException(Text.Get("恢复记录缺少切片校验表。"));
+        byte[] table = tablePacket.Body;
         var sliceMd5 = new byte[slices][];
-        for (int i = 0; i < slices; i++) sliceMd5[i] = table.AsSpan(16 + i * 20, 16).ToArray();
-
-        var exponents = new HashSet<uint>();
-        var selected = new List<Par2Packet>();
-        foreach (var packet in packets)
+        for (int i = 0; i < slices; i++)
         {
-            if (packet.Type == CreatorType) continue;
-            if (packet.Type == RecoveryType)
-            {
-                uint exponent = BinaryPrimitives.ReadUInt32LittleEndian(packet.Body);
-                if (exponent >= 65535 || !exponents.Add(exponent)) continue;
-            }
-            selected.Add(new(packet.Offset, packet.Size));
+            ct.ThrowIfCancellationRequested();
+            sliceMd5[i] = table.AsSpan(16 + i * 20, 16).ToArray();
         }
-        return new(blockSize, description[16..32], sliceMd5, exponents.Count, selected, end);
+
+        var selected = new List<Par2Packet>(3 + packets.Recovery.Count);
+        foreach (var packet in packets.Ordered)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (packet.Recovery || ReferenceEquals(packet, mainPacket) || ReferenceEquals(packet, descriptionPacket) || ReferenceEquals(packet, tablePacket))
+                selected.Add(new(packet.Offset, packet.Size));
+        }
+        ct.ThrowIfCancellationRequested();
+        return new(blockSize, description[16..32], sliceMd5, packets.Recovery.Count, selected, packets.End);
     }
 
     /// <summary>
@@ -203,6 +263,7 @@ internal static class Par2Metadata
             var window = buffer.AsSpan(0, RandomAccess.Read(file.SafeFileHandle, buffer.AsSpan(0, (int)(top - from)), from));
             for (int index = window.LastIndexOf(Magic); index >= 0; index = window[..(index + Magic.Length - 1)].LastIndexOf(Magic))
             {
+                ct.ThrowIfCancellationRequested();
                 long position = from + index;
                 if (position + size <= end && RandomAccess.Read(file.SafeFileHandle, packet, position) == size &&
                     DescribesPayload(packet, out long length)) return length;
@@ -228,16 +289,26 @@ internal static class Par2Metadata
         return true;
     }
 
-    private static byte[]? Single(List<Candidate> packets, string type, string conflict)
+    private static Candidate? Single(Candidates packets, string type, string fileId, string conflict)
     {
-        byte[]? chosen = null;
-        foreach (var packet in packets.Where(c => c.Type == type))
-        {
-            if (chosen is null) chosen = packet.Body;
-            else if (!chosen.AsSpan().SequenceEqual(packet.Body)) throw new InvalidDataException(conflict);
-        }
-        return chosen;
+        if (!packets.Metadata.TryGetValue((type, fileId), out var value)) return null;
+        if (value.Conflict) throw new InvalidDataException(conflict);
+        return value.Packet;
     }
 
-    private sealed record Candidate(long Offset, long Size, string Type, string SetId, byte[] Body);
+    private static InvalidDataException MetadataLimit() => new(Text.Get("恢复记录的元数据超过安全限制。"));
+
+    private sealed record Candidate(long Offset, long Size, byte[] Body, bool Recovery = false);
+    private sealed class RetainedMetadata(Candidate packet)
+    {
+        internal Candidate Packet { get; } = packet;
+        internal bool Conflict { get; set; }
+    }
+    private sealed class Candidates
+    {
+        internal long End { get; set; }
+        internal Dictionary<(string Type, string FileId), RetainedMetadata> Metadata { get; } = [];
+        internal Dictionary<uint, Candidate> Recovery { get; } = [];
+        internal List<Candidate> Ordered { get; } = [];
+    }
 }

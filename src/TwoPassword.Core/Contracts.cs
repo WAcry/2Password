@@ -5,7 +5,10 @@ public enum PackageLayout { Auto = 0, Embedded = 1, Detached = 2 }
 /// <summary>Writes recovery data for a finished payload file to <paramref name="output"/>. The payload file is closed and must not be modified.</summary>
 public delegate void RecoveryWriter(string payloadPath, long payloadLength, Stream output, CancellationToken cancellationToken);
 public sealed record CreateOptions(string SourcePath, string OutputPath, IReadOnlyList<string> Passwords, PackageCompression Compression = PackageCompression.Zstd, string? StubPath = null, PackageLayout Layout = PackageLayout.Auto, RecoveryWriter? Recovery = null);
-public sealed record ExtractOptions(string PackagePath, string OutputDirectory, string Password);
+public sealed record ExtractOptions(string PackagePath, string OutputDirectory, string Password)
+{
+    internal ExtractionProvenance Provenance { get; init; }
+}
 public sealed record PackageProgress(string Stage, string CurrentPath, long BytesProcessed, long TotalBytes, int EntriesProcessed, int TotalEntries);
 public sealed record PackageResult(string OutputPath, int FileCount, int DirectoryCount, long TotalBytes, string? DataPath = null, bool IsDetached = false, long RecoveryBytes = 0);
 public sealed record PackageInfo(int PasswordSlots, PackageCompression Compression, long EncryptedBytes, string? DataPath = null, bool IsDetached = false, long RecoveryBytes = 0);

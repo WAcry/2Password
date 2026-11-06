@@ -450,6 +450,63 @@ await Check("an empty password slot repairs damaged ciphertext without changing 
     Assert(await SameHash(SHA256.HashData(contents), Path.Combine(output, Path.GetFileName(source))), "Empty-slot recovery restored different bytes.");
     Assert(await SameHash(damaged, emptyPackage), "Empty-slot recovery changed the source package.");
 });
+await Check("Internet origin survives healthy precheck and automatic repaired-copy extraction", async () =>
+{
+    string originSource = Path.Combine(work, "origin-source.txt");
+    File.WriteAllText(originSource, "Harmless recovery provenance fixture.");
+    string originPackage = Path.Combine(work, "origin-package.2pw");
+    var (_, error) = await RecoveryService.CreateAsync(new(originSource, originPackage, [password], PackageCompression.None), 5);
+    Assert(error is null, error?.ToString() ?? "");
+    File.WriteAllText(originPackage + ":Zone.Identifier", "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.invalid/private\r\n");
+    string healthy = Path.Combine(work, "origin-healthy-precheck");
+    await RecoveryService.ExtractAsync(new(originPackage, healthy, password), verifyFirst: true);
+    Assert(File.ReadAllText(Path.Combine(healthy, "origin-source.txt") + ":Zone.Identifier") == "[ZoneTransfer]\r\nZoneId=3\r\n", "Healthy precheck discarded the source zone.");
+    Flip(originPackage, 6144 + 40);
+    byte[] damagedHash = await Hash(originPackage);
+    foreach (bool verifyFirst in new[] { false, true })
+    {
+        var events = new RecoveryEvents();
+        string output = Path.Combine(work, "origin-repaired-" + verifyFirst);
+        await RecoveryService.ExtractAsync(new(originPackage, output, password), recoveryProgress: events, verifyFirst: verifyFirst);
+        Assert(events.Count > 0, "Damaged fixture did not pass through recovery.");
+        string restored = Path.Combine(output, "origin-source.txt");
+        Assert(File.ReadAllText(restored) == File.ReadAllText(originSource), "Restored bytes differ.");
+        Assert(File.ReadAllText(restored + ":Zone.Identifier") == "[ZoneTransfer]\r\nZoneId=3\r\n", "Repaired copy lost the original zone.");
+        Assert(await SameHash(damagedHash, originPackage), "Recovery altered the source package.");
+    }
+    File.WriteAllText(originPackage + ":Zone.Identifier", "[ZoneTransfer]\r\nZoneId=3\r\nZoneId=0\r\n");
+    var invalidEvents = new RecoveryEvents();
+    string invalidOutput = Path.Combine(work, "origin-invalid");
+    await MustFail(() => RecoveryService.ExtractAsync(new(originPackage, invalidOutput, password), recoveryProgress: invalidEvents));
+    Assert(invalidEvents.Count == 0 && !Directory.Exists(invalidOutput), "Invalid source origin entered recovery or published plaintext.");
+});
+await Check("Detached launcher and dataset zones survive recovery without downgrading", async () =>
+{
+    string originSource = Path.Combine(work, "detached-origin-source.txt");
+    File.WriteAllText(originSource, "Harmless detached recovery provenance fixture.");
+    byte[] stub = new byte[512];
+    "MZ"u8.CopyTo(stub);
+    string stubPath = Path.Combine(work, "origin-stub.exe");
+    File.WriteAllBytes(stubPath, stub);
+    foreach (string originMember in new[] { "launcher", "dataset", "both" })
+    {
+        string launcher = Path.Combine(work, "detached-origin-" + originMember + ".exe");
+        var (result, error) = await RecoveryService.CreateAsync(new(originSource, launcher, [password], PackageCompression.None, stubPath, PackageLayout.Detached), 5);
+        Assert(error is null, error?.ToString() ?? "");
+        string dataPath = result.DataPath!;
+        if (originMember != "dataset") File.WriteAllText(launcher + ":Zone.Identifier", "[ZoneTransfer]\r\nZoneId=3\r\n");
+        if (originMember != "launcher") File.WriteAllText(dataPath + ":Zone.Identifier", "[ZoneTransfer]\r\nZoneId=4\r\n");
+        Flip(dataPath, 6144 + 40);
+        string output = Path.Combine(work, "detached-origin-restored-" + originMember);
+        var events = new RecoveryEvents();
+        await RecoveryService.ExtractAsync(new(launcher, output, password), recoveryProgress: events);
+        Assert(events.Count > 0, "Detached fixture did not enter recovery.");
+        string restored = Path.Combine(output, "detached-origin-source.txt");
+        int expectedZone = originMember == "launcher" ? 3 : 4;
+        Assert(File.ReadAllText(restored + ":Zone.Identifier") == "[ZoneTransfer]\r\nZoneId=" + expectedZone + "\r\n", "Detached origin was lost or downgraded during recovery.");
+        Assert(File.ReadAllText(restored) == File.ReadAllText(originSource), "Detached recovered bytes differ.");
+    }
+});
 await Check("recovery rejects an unsupported schema with intact parity and a missing trailer", async () =>
 {
     string unsupported = Path.Combine(work, "unsupported-schema-no-trailer.2pw");

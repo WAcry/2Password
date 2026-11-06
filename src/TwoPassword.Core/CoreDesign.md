@@ -137,6 +137,8 @@ Readers never trust the region's structure. `Par2Metadata` scans it packet by pa
 - exactly one IFSC table;
 - RecvSlic exponents below 65535, deduplicated. Creator packets are dropped.
 
+Scanning retains one representative per metadata identity (set ID, packet type and file ID), records conflicting bodies for rejection when that identity is selected, and retains one recovery packet per exponent. Limits are 8 distinct candidate sets, 65,538 retained packets and 8 MiB of retained packet bodies; counts and body bytes are bounded separately. Creator bodies are not retained. Exceeding a metadata or hashing budget is an error, and scanning and validation honor cancellation. Each candidate set separately tracks the last checksum-valid packet's physical end, including duplicates and Creator packets, so deduplication does not shorten the recovery region used to reconstruct a footer.
+
 Checking hashes the payload slice by slice (the last slice zero-padded to the block size) and compares the MD5 values with the IFSC table. Exit codes: 0 intact, 1 repairable, 2 not enough recovery blocks, 4 no usable recovery data.
 
 Repair opens the data file for writing with `FileShare.Read`, copies the payload into a private workspace and writes only the validated packets, each rechecked while copied, as `payload.par2`. It runs `par2 r -B<work> -- <work>\payload.par2`, checks every slice and the whole-payload MD5, and then writes back only the damaged slices in place. Damage-triggered extraction repairs a copy in a workspace beside the destination, frames it as a raw dataset with footer `(0, length, 0)` and extracts from it; the package file is not modified.
@@ -187,6 +189,8 @@ Creation publishes a completed dataset first and its launcher last, with no over
 PAX names use strict UTF-8. No NFC, NFD, NFKC, case or other normalization is applied. File contents remain opaque bytes, including files containing GBK, Shift-JIS or invalid text encodings.
 
 The source root itself is an archive entry. Empty files/directories, hidden and system files, exact names, full contents, creation/write timestamps and supported basic Windows attributes are retained. `Zone.Identifier` is preserved as raw bytes, up to 64 KiB per entry. Other alternate streams, reparse points, junctions, symbolic links, EFS, device and offline entries are rejected explicitly instead of being silently lost.
+
+Extraction also reads bounded `Zone.Identifier` streams from the original selected package and any resolved dataset. Internet (3) and Restricted (4) restrictions form a minimum for every extracted entry, including entries whose archived marker is absent or claims a local zone. The original restriction is carried as internal extraction context through recovery copies. When an outer restriction applies, output uses a canonical ZoneTransfer marker containing the effective zone without copying container source/referrer URLs; Restricted takes precedence over Internet. Without an outer restriction, archived marker bytes are preserved unchanged. Malformed outer markers and provenance I/O failures stop extraction before publication. This is a filesystem policy and does not change V1 encrypted bytes or password slots.
 
 PAX fields used by the application:
 

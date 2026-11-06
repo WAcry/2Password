@@ -124,6 +124,146 @@ internal static partial class Program
             cts.Cancel();
             return MustCancel(() => Task.FromResult(ReadParity(BuildParity(payload), payload.Length, cts.Token)));
         });
+        await Run("PAR2 repeated descriptions, tables and Creator packets retain one bounded set and the true end", () =>
+        {
+            byte[] valid = BuildParity(payload);
+            byte[] description = FindParityPacket(valid, FileDescPacket);
+            byte[] table = FindParityPacket(valid, "PAR 2.0\0IFSC\0\0\0\0");
+            byte[] creator = FindParityPacket(valid, "PAR 2.0\0Creator\0");
+            using var region = new MemoryStream();
+            region.Write(valid);
+            for (int i = 0; i < 64000; i++) region.Write(description);
+            // These repeated table bodies exceed the retained-byte budget in aggregate,
+            // but only one copy should be charged and retained.
+            for (int i = 0; i < 300; i++) region.Write(table);
+            for (int i = 0; i < 1000; i++) region.Write(creator);
+            var set = ReadParity(region.ToArray(), payload.Length);
+            Assert(set.Packets.Count == 5 && set.RecoveryBlocks == 2, "Repeated metadata was retained.");
+            Assert(set.End == region.Length, "Discarding duplicates or Creator packets shortened the recovery region.");
+            return Task.CompletedTask;
+        });
+        await Run("PAR2 selected metadata keeps its physical packet order", () =>
+        {
+            byte[] valid = BuildParity(payload);
+            byte[] main = FindParityPacket(valid, MainPacket);
+            byte[] description = FindParityPacket(valid, FileDescPacket);
+            byte[] table = FindParityPacket(valid, "PAR 2.0\0IFSC\0\0\0\0");
+            byte[] recovery = FindParityPacket(valid, RecoveryPacket);
+            var set = ReadParity([.. recovery, .. table, .. main, .. description], payload.Length);
+            Assert(set.Packets.Select(p => p.Offset).SequenceEqual(new long[] { 0, recovery.Length, recovery.Length + table.Length,
+                recovery.Length + table.Length + main.Length }), "The selected packets were reordered.");
+            return Task.CompletedTask;
+        });
+        await Run("PAR2 physical end includes irrelevant file metadata and invalid exponents but excludes false Main identities", () =>
+        {
+            byte[] valid = BuildParity(payload);
+            byte[] foreign = RewriteParityPacket(FindParityPacket(valid, FileDescPacket), FileDescPacket, body => body[0] ^= 1);
+            byte[] recovery = RewriteParityPacket(FindParityPacket(valid, RecoveryPacket), RecoveryPacket,
+                body => BinaryPrimitives.WriteUInt32LittleEndian(body, 65535));
+            byte[] invalidMain = RewriteParityPacket(FindParityPacket(valid, MainPacket), MainPacket, body => body[0] ^= 1);
+            var set = ReadParity([.. valid, .. foreign, .. recovery, .. invalidMain], payload.Length);
+            Assert(set.Packets.Count == 5 && set.End == valid.Length + foreign.Length + recovery.Length,
+                "The end or packet selection changed when unrelated metadata was discarded.");
+            return Task.CompletedTask;
+        });
+        await Run("PAR2 conflicting tables of the selected FileID fail closed", () =>
+        {
+            const string type = "PAR 2.0\0IFSC\0\0\0\0";
+            byte[] valid = BuildParity(payload);
+            byte[] conflicting = RewriteParityPacket(FindParityPacket(valid, type), type, body => body[16] ^= 1);
+            return MustFail(() => Task.FromResult(ReadParity([.. valid, .. conflicting], payload.Length)));
+        });
+        await Run("PAR2 conflicting descriptions for an unrelated FileID remain ignored", () =>
+        {
+            byte[] valid = BuildParity(payload);
+            byte[] foreign = RewriteParityPacket(FindParityPacket(valid, FileDescPacket), FileDescPacket, body => body[0] ^= 1);
+            byte[] conflicting = RewriteParityPacket(foreign, FileDescPacket, body => body[16] ^= 1);
+            var set = ReadParity([.. valid, .. foreign, .. conflicting], payload.Length);
+            Assert(set.Packets.Count == 5 && set.End == valid.Length + foreign.Length + conflicting.Length,
+                "Unrelated FileID conflicts affected the selected file or physical end.");
+            return Task.CompletedTask;
+        });
+        await Run("PAR2 orphan recovery-set tracking has an explicit boundary", async () =>
+        {
+            byte[] valid = BuildParity(payload);
+            using var region = new MemoryStream();
+            region.Write(valid);
+            for (int i = 1; i <= Par2Metadata.MaxRecoverySets; i++)
+            {
+                byte[] setId = new byte[16];
+                BinaryPrimitives.WriteInt32LittleEndian(setId, i);
+                region.Write(ParityPacket("PAR 2.0\0Creator\0", new byte[4], setId));
+                if (i == Par2Metadata.MaxRecoverySets - 1)
+                {
+                    var set = ReadParity(region.ToArray(), payload.Length);
+                    Assert(set.End == valid.Length && set.Packets.Count == 5, "Foreign Creator sets changed the selected set.");
+                }
+            }
+            await MustFail(() => Task.FromResult(ReadParity(region.ToArray(), payload.Length)));
+        });
+        await Run("PAR2 unique candidate count is bounded independently of body size", async () =>
+        {
+            byte[] valid = BuildParity(payload);
+            byte[] setId = valid.AsSpan(32, 16).ToArray();
+            byte[] body = FindParityPacket(valid, FileDescPacket)[64..];
+            body.AsSpan(0, 16).Clear();
+            using var region = new MemoryStream();
+            region.Write(valid);
+            int foreignCount = Par2Metadata.MaxRetainedPackets - 5;
+            for (int i = 1; i <= foreignCount; i++)
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(body, i);
+                region.Write(ParityPacket(FileDescPacket, body, setId));
+            }
+            Assert(ReadParity(region.ToArray(), payload.Length).Packets.Count == 5, "The permitted candidate boundary was rejected.");
+            BinaryPrimitives.WriteInt32LittleEndian(body, foreignCount + 1);
+            region.Write(ParityPacket(FileDescPacket, body, setId));
+            await MustFail(() => Task.FromResult(ReadParity(region.ToArray(), payload.Length)));
+        });
+        await Run("PAR2 unique checksum-table bodies have a separate memory budget", async () =>
+        {
+            const string type = "PAR 2.0\0IFSC\0\0\0\0";
+            byte[] valid = BuildParity(payload);
+            byte[] setId = valid.AsSpan(32, 16).ToArray();
+            byte[] body = FindParityPacket(valid, type)[64..];
+            body.AsSpan(0, 16).Clear();
+            long initialBytes = 28 + 64 + body.Length + 2 * 4;
+            int foreignCount = (int)((Par2Metadata.MaxMetadataBytes - initialBytes) / body.Length);
+            using var region = new MemoryStream();
+            region.Write(valid);
+            for (int i = 1; i <= foreignCount; i++)
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(body, i);
+                region.Write(ParityPacket(type, body, setId));
+            }
+            Assert(ReadParity(region.ToArray(), payload.Length).Packets.Count == 5, "The permitted body budget was rejected.");
+            BinaryPrimitives.WriteInt32LittleEndian(body, foreignCount + 1);
+            region.Write(ParityPacket(type, body, setId));
+            await MustFail(() => Task.FromResult(ReadParity(region.ToArray(), payload.Length)));
+        });
+        await Run("PAR2 cancellation interrupts a long repeated-metadata scan", async () =>
+        {
+            byte[] valid = BuildParity(payload);
+            byte[] description = FindParityPacket(valid, FileDescPacket);
+            using var region = new MemoryStream();
+            region.Write(valid);
+            for (int i = 0; i < 100000; i++) region.Write(description);
+            using var file = ParityFile(region.ToArray(), out long start);
+            using var cts = new CancellationTokenSource();
+            cts.CancelAfter(10);
+            await MustCancel(() => Task.Run(() => Par2Metadata.Read(file, start, region.Length, payload.Length, cts.Token)));
+        });
+    }
+
+    private static byte[] FindParityPacket(byte[] region, string type)
+    {
+        for (int at = 0; at < region.Length;)
+        {
+            int length = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(region.AsSpan(at + 8)));
+            if (Encoding.ASCII.GetString(region, at + 48, 16) == type) return region.AsSpan(at, length).ToArray();
+            at += length;
+        }
+        throw new InvalidOperationException("Expected PAR2 packet was missing from the fixture.");
     }
 
     private static Par2Set ReadParity(byte[] region, long sourceLength, CancellationToken cancellationToken = default)

@@ -4,6 +4,8 @@
   <resheader name="version"><value>2.0</value></resheader>
   <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="恢复记录的元数据超过安全限制。" xml:space="preserve"><value>恢复记录的元数据超过安全限制。</value></data>
+  <data name="Zone.Identifier 包含无效或冲突的安全区域。" xml:space="preserve"><value>Zone.Identifier 包含无效或冲突的安全区域。</value></data>
   <data name="Brotli 块被截断、包含尾随数据，或解压长度不匹配。" xml:space="preserve"><value>Brotli 块被截断、包含尾随数据，或解压长度不匹配。</value></data>
   <data name="Expected a SHA-256 header hash." xml:space="preserve"><value>需要 SHA-256 格式的包头摘要。</value></data>
   <data name="PAR2 内存不足。" xml:space="preserve"><value>PAR2 内存不足。</value></data>

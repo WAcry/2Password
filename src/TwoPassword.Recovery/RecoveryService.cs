@@ -74,6 +74,7 @@ public static class RecoveryService
         cancellationToken.ThrowIfCancellationRequested();
         PackageService.ValidatePassword(options.Password);
         ValidateExtractionTarget(options.OutputDirectory);
+        options = options with { Provenance = options.Provenance.Include(options.PackagePath) };
         if (verifyFirst && TryLocate(options.PackagePath, cancellationToken) is { Regions.RecoveryLength: > 0 } checkedFirst)
             return await ExtractRepairedAsync(options, checkedFirst, packageProgress, recoveryProgress, cancellationToken).ConfigureAwait(false)
                 ?? await PackageService.ExtractAsync(options, packageProgress, cancellationToken).ConfigureAwait(false);
@@ -215,6 +216,7 @@ public static class RecoveryService
         IProgress<RecoveryProgress>? recoveryProgress, CancellationToken ct)
     {
         var regions = location.Regions;
+        options = options with { Provenance = options.Provenance.Include(options.PackagePath).Include(regions.DataPath) };
         string work = CreateWorkspace(Path.GetDirectoryName(Full(options.OutputDirectory))!);
         try
         {

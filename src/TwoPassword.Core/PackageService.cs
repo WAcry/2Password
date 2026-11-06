@@ -327,6 +327,8 @@ public static class PackageService
             var file = resolved.File;
             var info = resolved.Envelope;
             key = info.Unlock(options.Password, ct, progress);
+            var provenance = options.Provenance.Include(options.PackagePath);
+            if (resolved.DataPath is not null) provenance = provenance.Include(resolved.DataPath);
             using var decrypted = new DecryptingStream(file, key, info, ct);
             ct.ThrowIfCancellationRequested();
             string parent = Path.GetDirectoryName(destination)!;
@@ -389,15 +391,21 @@ public static class PackageService
                         }
                         output.Flush(flushToDisk: true);
                     }
-                    if (values.Zone is not null)
+                    byte[]? effectiveZone = null;
+                    try
                     {
-                        try
+                        effectiveZone = provenance.ForEntry(values.Zone);
+                        if (effectiveZone is not null)
                         {
                             using var zoneStream = new FileStream(SafePaths.Extended(path) + ":Zone.Identifier", FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                            zoneStream.Write(values.Zone);
+                            zoneStream.Write(effectiveZone);
                             zoneStream.Flush(flushToDisk: true);
                         }
-                        finally { CryptographicOperations.ZeroMemory(values.Zone); }
+                    }
+                    finally
+                    {
+                        if (effectiveZone is not null) CryptographicOperations.ZeroMemory(effectiveZone);
+                        if (values.Zone is not null && !ReferenceEquals(values.Zone, effectiveZone)) CryptographicOperations.ZeroMemory(values.Zone);
                     }
                     metadata.Add((path, directory, values.Created, values.Written, values.Attributes));
                     progress?.Report(new(Text.Get("验证并解包"), relative, total, info.TotalBytes, files + directories, info.Files + info.Directories));

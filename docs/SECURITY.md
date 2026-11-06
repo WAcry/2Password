@@ -40,6 +40,8 @@ These Argon2id parameters follow the lower-memory recommended option in [RFC 910
 
 A valid password reveals the content key, but the content key does not reveal the other passwords. Those passwords can still be attacked with offline dictionary guessing. **The weakest valid password determines the package's practical confidentiality**, so adding a weak password weakens the whole package. Copies already sent cannot be revoked.
 
+There is no password table encrypted under the content key. Each candidate must pass through Argon2id with the target slot's salt before its wrapping key can be checked. The authentication tag permits offline checking even without any valid password. Knowing one password does not remove that derivation step, but shared words, dates, or numbering patterns can narrow the search for other passwords. Generate each password independently with sufficient strength; a limit on attempts in the interface cannot stop offline guessing.
+
 Passwords retain their exact Unicode character sequence. The application does not trim whitespace, change case, or normalize NFC/NFD. An empty string is allowed: if any password is empty, anyone can open the entire package with empty input, so its contents and filenames have no password confidentiality. Invalid Unicode, null, duplicates, and oversized input are rejected.
 
 V1 uses `0x00 || StrictUTF8(password)` as the Argon2id input for every password. The fixed prefix lets the dependency process an empty string while preserving a one-to-one encoding of passwords; an empty string, a space, and the U+0000 character remain distinct.
@@ -77,6 +79,8 @@ Hidden and system entries are packaged too, and any scanning failure fails the w
 - Names that cannot be represented unambiguously in a normal Windows destination.
 
 Restored: file bytes, file and directory names, empty directories, supported timestamps, and common attributes. Not preserved: NTFS ACLs and owners, hard-link relationships, sparse allocation layout, short names, file IDs, audit information, and other filesystem-specific metadata. Hard-linked content is restored as separate files, and sparse content can take more disk space.
+
+Extraction also inherits download restrictions from the input package. If the original EXE or actual `.2pw` has an Internet or Restricted zone marker, extracted files retain at least that restriction. Missing markers or local-zone claims inside the archive cannot lower it. Automatic recovery carries the original provenance through its temporary copy. Local packages without these outer restrictions restore their saved markers unchanged. Failure to read or write provenance stops extraction instead of publishing files with missing markers.
 
 The file inventory is compared before and after packaging, and ordinary concurrent changes cause an error. There is no VSS snapshot, so export a consistent backup of a live database with its own tools before packaging it.
 
@@ -123,6 +127,8 @@ A single EXE with a destroyed trailer opens as a plain copy of 2Password when do
 The parameters are par2cmdline-turbo's defaults: a block size of about 1/2000 of the encrypted data, rounded to a multiple of 4 bytes, with memory and thread count left to par2. Redundancy is 5% by default, with 10% and 20% as options. Capacity is counted in damaged blocks, so 5% redundancy repairs roughly 5% of the blocks. A few errors spread across many blocks can still use up the recovery blocks.
 
 When reading the recovery data, the app checks each PAR2 packet's length and MD5. A damaged packet is skipped and scanning resumes at the next packet marker, so one damaged spot costs one packet. Only packets that describe this encrypted data reach the native tool: the file name must be `payload`, the length, block size and file ID must match, and there must be exactly one recovery set. Creator packets and other packet types are dropped. Conflicting metadata is an error.
+
+Repeated recovery metadata is combined during scanning, and recovery blocks are deduplicated by exponent. Retained metadata bytes, candidate counts, and recovery-set counts have explicit budgets; exceeding one is an error. Scanning and subsequent validation both respond to cancellation. The actual end of repeated valid packets is tracked separately, so deduplication does not shorten valid recovery data when rebuilding a trailer.
 
 Checking doesn't run the native tool. The app hashes the encrypted data block by block and compares the MD5 values with the checksum table in the recovery data to count damaged blocks.
 
