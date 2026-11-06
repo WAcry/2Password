@@ -33,6 +33,8 @@ The two installers differ only in the setup wizard's language; the app switches 
 
 **Encrypt:** drag a file or folder into the window, enter passwords and click Encrypt. The finish screen lists the files to send.
 
+**Batch encryption:** select multiple files or folders, or drop a mixed selection. Add or remove items on the encrypt screen. Each selected item becomes its own package in the chosen folder, using the same passwords and options. Conflicting names receive a number; existing files are never overwritten. Completed packages remain available after cancellation or a failure, and you can continue with the remaining items.
+
 **Decrypt:** double-click the EXE you received and enter any one of the passwords. If you'd rather not run an EXE someone sent you, drag it into your own copy of 2Password.
 
 **View a password:** hold the eye button beside a password field to reveal it temporarily; release to hide it. This works for passwords, confirmation fields, and decryption.
@@ -46,6 +48,8 @@ Compression, single EXE versus EXE + `.2pw`, and the amount of recovery data are
 Compression defaults to **Zstd (Lv.3)**. Choose **Brotli (Lv.6)** to favor compression ratio, or choose no compression.
 
 **Right-click menu:** turn on "Show in right-click menu" in the ··· menu at the top right. Right-click a file or folder in Explorer and choose "Encrypt with 2Password". `.2pw` files get Decrypt. On Windows 11 these are under "Show more options".
+
+Select multiple files and folders to send them to one encryption window. A new selection opens another window if encryption is already running. The legacy Windows menu supports up to 100 selected items by default; use drag and drop or the application's selection dialogs for larger batches. Running an updated copy refreshes an already-enabled older menu.
 
 **Administrator rights:** saving or decrypting into a location like Program Files fails with an access-denied message. Click "Retry as administrator" next to it. The chosen files and location carry over; enter the passwords again. The ··· menu also has "Run as administrator".
 

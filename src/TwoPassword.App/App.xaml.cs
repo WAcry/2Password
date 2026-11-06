@@ -10,6 +10,10 @@ namespace TwoPassword.App;
 
 public partial class App : Application
 {
+    private ExplorerSelectionBroker? _explorerBroker;
+    private MainWindow? _explorerWindow;
+    private string? _explorerStubPath;
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         UiText.Initialize(e.Args);
@@ -23,13 +27,74 @@ public partial class App : Application
         var launch = GuiLaunchOptions.Parse(e.Args);
         var processPath = Environment.ProcessPath;
         var embedded = processPath is not null && PackageService.HasPackage(processPath);
+        if (!embedded && processPath is not null)
+        {
+            try { ExplorerMenu.UpgradeIfNeeded(processPath); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
+        }
+        if (launch.ExplorerEncrypt && !embedded && processPath is not null)
+        {
+            var paths = launch.InputPaths ?? (launch.InitialPath is { } initial ? [initial] : []);
+            try
+            {
+                _explorerBroker = await ExplorerSelectionBroker.ConnectOrCreateAsync(
+                    ExplorerSelectionBroker.PipeName(processPath, Elevation.IsElevated), paths);
+                if (_explorerBroker is null)
+                {
+                    Shutdown();
+                    return;
+                }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or OperationCanceledException or ArgumentException)
+            {
+                // If IPC is unavailable, keep this selection in its own window instead of losing it.
+            }
+        }
         Theme.Initialize(e.Args);
         var window = new MainWindow(embedded ? processPath : null, launch.StubPath, embedded ? null : launch.InitialPath,
             launch.Encrypt && !embedded, launch.Target, launch.Repair && !embedded);
         window.ApplyLaunchOptions(launch);
         MainWindow = window;
-        ShutdownMode = ShutdownMode.OnMainWindowClose;
+        ShutdownMode = _explorerBroker is null ? ShutdownMode.OnMainWindowClose : ShutdownMode.OnLastWindowClose;
+        if (_explorerBroker is not null)
+        {
+            _explorerWindow = window;
+            _explorerStubPath = launch.StubPath;
+            RoutedEventHandler? ready = null;
+            ready = (_, _) =>
+            {
+                window.Loaded -= ready;
+                _explorerBroker.StartReceiving(paths => Dispatcher.InvokeAsync(() => ReceiveExplorerSelectionAsync(paths)).Task.Unwrap());
+            };
+            // The constructor registered the initial routing handler first. Waiting for Loaded
+            // prevents an early IPC selection from being overwritten by that initial route.
+            window.Loaded += ready;
+        }
         MainWindow.Show();
+    }
+
+    private async Task ReceiveExplorerSelectionAsync(string[] paths)
+    {
+        if (_explorerWindow is not { IsVisible: true } || !_explorerWindow.TryAddExplorerPaths(paths))
+        {
+            var window = new MainWindow(stubOverride: _explorerStubPath, initialPath: paths[0], initialEncrypt: true);
+            window.ApplyLaunchOptions(new GuiLaunchOptions(InitialPath: paths[0], Encrypt: true, InputPaths: paths));
+            var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            RoutedEventHandler? loaded = null;
+            loaded = (_, _) => { window.Loaded -= loaded; ready.TrySetResult(); };
+            window.Loaded += loaded;
+            _explorerWindow = window;
+            window.Show();
+            await ready.Task;
+        }
+        if (_explorerWindow.WindowState == WindowState.Minimized) _explorerWindow.WindowState = WindowState.Normal;
+        _explorerWindow.Activate();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _explorerBroker?.Dispose();
+        base.OnExit(e);
     }
 }
 

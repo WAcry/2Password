@@ -66,5 +66,32 @@ internal static partial class Program
             Assert(GuiLaunchOptions.Parse(selected.ElevationArguments("en", "light")) == selected, "Repair was routed as another operation or the path was split.");
             return Task.CompletedTask;
         });
+
+        await Run("GUI encryption retains every selected file and folder around option values", () =>
+        {
+            string[] paths = [@"C:\资料\日本語 & one.txt", @"D:\另一个文件夹", @"C:\emoji 🔑\two.exe"];
+            var parsed = GuiLaunchOptions.Parse(["--explorer-encrypt", paths[0], paths[1], "--language", "en",
+                "--target", @"D:\输出", "--encrypt", paths[2], "--compression", "none"]);
+            Assert(parsed.Encrypt && parsed.ExplorerEncrypt, "Explorer selection did not select encryption.");
+            Assert(parsed.InitialPath == paths[0] && parsed.InputPaths!.SequenceEqual(paths), "A selected path was lost or split.");
+            Assert(parsed.Target == @"D:\输出" && parsed.Compression == "none", "An option became a selected path.");
+            return Task.CompletedTask;
+        });
+
+        await Run("Elevation retains the full batch but never forwards it back to an Explorer window", () =>
+        {
+            string[] paths = [@"C:\source.txt", @"C:\中文 🔑 & (folder)", "--path-looking-like-a-switch"];
+            var selected = new GuiLaunchOptions(InitialPath: paths[0], Encrypt: true, Target: @"D:\输出",
+                Compression: "brotli", Layout: "detached", RecoveryPercent: 10, InputPaths: paths, ExplorerEncrypt: true);
+            var arguments = selected.ElevationArguments("zh-CN", "dark");
+            var parsed = GuiLaunchOptions.Parse(arguments);
+            Assert(parsed.InputPaths!.SequenceEqual(paths), "Elevation lost or reparsed a batch path.");
+            Assert(parsed with { InputPaths = null } == selected with { InputPaths = null, ExplorerEncrypt = false },
+                "Elevation changed a selected batch option.");
+            Assert(!arguments.Contains("--explorer-encrypt"), "An elevation restart could join an unrelated Explorer window.");
+            return Task.CompletedTask;
+        });
+
+        await RunExplorerSelectionBrokerTests();
     }
 }

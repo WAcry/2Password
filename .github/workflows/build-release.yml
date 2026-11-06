@@ -62,6 +62,7 @@ jobs:
             artifacts/recovery-results.json
             artifacts/installer-results.json
             artifacts/localization-results.json
+            artifacts/multiselect-results.json
             artifacts/install-smoke/**/*.log
           if-no-files-found: ignore
 

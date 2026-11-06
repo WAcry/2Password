@@ -31,6 +31,8 @@ internal static partial class Program
 
         await RunGuiLaunchOptionsTests();
         if (args.Contains("--gui-arguments-only", StringComparer.Ordinal)) return await SaveResults(repository);
+        await RunBatchPackageTests();
+        if (args.Contains("--batch-only", StringComparer.Ordinal)) return await SaveResults(repository);
         await RunPar2MetadataTests();
         if (args.Contains("--par2-only", StringComparer.Ordinal)) return await SaveResults(repository);
         await RunWindowsAclTests();

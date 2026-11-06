@@ -196,4 +196,7 @@
   <data name="文件尾部损坏。{0}" xml:space="preserve"><value>文件尾部损坏。{0}</value></data>
   <data name="已修复文件尾部。" xml:space="preserve"><value>已修复文件尾部。</value></data>
   <data name="已修复文件尾部和 {0} 个损坏的数据块。" xml:space="preserve"><value>已修复文件尾部和 {0} 个损坏的数据块。</value></data>
+  <data name="请选择至少一个文件或文件夹。" xml:space="preserve"><value>请选择至少一个文件或文件夹。</value></data>
+  <data name="请选择已存在的输出文件夹。" xml:space="preserve"><value>请选择已存在的输出文件夹。</value></data>
+  <data name="没有可用的名称，请手动选择位置。" xml:space="preserve"><value>没有可用的名称，请手动选择位置。</value></data>
 </root>

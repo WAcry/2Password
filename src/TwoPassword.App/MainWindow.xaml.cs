@@ -39,6 +39,7 @@ public partial class MainWindow : Window
     private readonly bool _initialEncrypt;
     private readonly bool _initialRepair;
     private readonly string? _initialTarget;
+    private IReadOnlyList<string>? _initialPaths;
     private bool _verifyFirstOnLoad;
     private readonly List<PasswordRow> _rows = [];
     private readonly DispatcherTimer _progressTimer;
@@ -57,7 +58,9 @@ public partial class MainWindow : Window
     private Item _dragItem;
     private string? _dragPath;
 
-    private string? _sourcePath;
+    private string[] _sourcePaths = [];
+    private string? _sourcePath => _sourcePaths.FirstOrDefault();
+    private bool IsBatch => _sourcePaths.Length > 1;
     private (int Files, long Bytes)? _sourceSize;
     private string? _outputPath;
 
@@ -76,6 +79,10 @@ public partial class MainWindow : Window
     private RepairNext _repairNext;
 
     private PackageResult? _doneResult;
+    private IReadOnlyList<PackageResult>? _donePackages;
+    private int _donePlanned;
+    private bool _doneInterrupted;
+    private string[] _pendingSources = [];
     private string? _doneWarning;
     private bool _doneEncrypted;
     private bool _doneWithoutPassword;
@@ -139,6 +146,7 @@ public partial class MainWindow : Window
 
     internal void ApplyLaunchOptions(GuiLaunchOptions options)
     {
+        _initialPaths = options.InputPaths;
         if ((options.Compression switch { "zstd" => CompressionZstd, "brotli" => CompressionBrotli, "none" => CompressionNone, _ => null }) is { } compression)
             compression.IsChecked = true;
         if ((options.Layout switch { "auto" => LayoutAuto, "embedded" => LayoutEmbedded, "detached" => LayoutDetached, _ => null }) is { } layout)
@@ -157,6 +165,11 @@ public partial class MainWindow : Window
             await InspectPackageAsync(_embeddedPackage);
         }
         else if (!string.IsNullOrWhiteSpace(_initialPath) && _initialRepair) OpenRepair(_initialPath, Screen.Home);
+        else if (_initialPaths is { Count: > 1 })
+        {
+            OpenSources(_initialPaths);
+            if (_initialTarget is not null) UseTarget(_initialTarget);
+        }
         else if (!string.IsNullOrWhiteSpace(_initialPath))
         {
             await RouteAsync(_initialPath, encrypt: _initialEncrypt);
@@ -172,7 +185,7 @@ public partial class MainWindow : Window
             var full = Path.GetFullPath(target);
             if (_screen == Screen.Encrypt && _sourcePath is not null)
             {
-                _outputPath = NextAvailablePackagePath(full);
+                _outputPath = IsBatch ? full : NextAvailablePackagePath(full);
                 RenderOutput();
             }
             else if (_screen == Screen.Unlock && _packagePath is not null)
@@ -192,13 +205,16 @@ public partial class MainWindow : Window
     private void ShellDrop(string[] paths)
     {
         if (!AcceptsDrops || paths.Length == 0) return;
-        if (paths.Length > 1)
-        {
-            if (_screen == Screen.Home) ShowNotice(HomeNotice, L("一次只能放一项"));
-            return;
-        }
-        var item = Classify(paths[0]);
-        if (item is Item.Source or Item.Package) _ = OpenAsync(paths[0], item);
+        AcceptPaths(paths);
+    }
+
+    internal bool TryAddExplorerPaths(IReadOnlyList<string> paths)
+    {
+        if (_busy || _embeddedPackage is not null || _screen is not (Screen.Home or Screen.Encrypt)) return false;
+        OpenSources(paths, append: _screen == Screen.Encrypt);
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+        return true;
     }
 
     private void Window_StateChanged(object? sender, EventArgs e)
@@ -319,7 +335,7 @@ public partial class MainWindow : Window
         ClearPasswords();
         while (_rows.Count > 1) RemoveRow(_rows[^1], focus: false);
         foreach (var row in _rows) row.PasswordVisited = row.ConfirmationVisited = false;
-        _sourcePath = null;
+        _sourcePaths = [];
         _sourceSize = null;
         _outputPath = null;
         _packagePath = null;
@@ -330,6 +346,7 @@ public partial class MainWindow : Window
         _repairPath = null;
         _repairResult = null;
         _doneResult = null;
+        _donePackages = null;
         _doneWarning = null;
         _doneWithoutPassword = false;
         foreach (var notice in new[] { HomeNotice, EncryptNotice, UnlockNotice, RepairNotice }) Hide(notice);
@@ -449,7 +466,7 @@ public partial class MainWindow : Window
             case Screen.Encrypt when _sourcePath is not null:
                 launch = launch with
                 {
-                    InitialPath = _sourcePath, Encrypt = true, Target = _outputPath,
+                    InitialPath = _sourcePath, InputPaths = IsBatch ? _sourcePaths : null, Encrypt = true, Target = _outputPath,
                     Compression = SelectedCompression().ToString().ToLowerInvariant(),
                     Layout = SelectedLayout().ToString().ToLowerInvariant(),
                     RecoveryPercent = SelectedRecoveryPercent(),
@@ -514,14 +531,14 @@ public partial class MainWindow : Window
 
     private void ChooseFile_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Title = L("选择要加密的文件"), CheckFileExists = true, Multiselect = false, Filter = L("所有文件|*.*") };
-        if (dialog.ShowDialog(this) == true) _ = RouteAsync(dialog.FileName);
+        var dialog = new OpenFileDialog { Title = L("选择要加密的文件"), CheckFileExists = true, Multiselect = true, Filter = L("所有文件|*.*") };
+        if (dialog.ShowDialog(this) == true) AcceptPaths(dialog.FileNames);
     }
 
     private void ChooseFolder_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFolderDialog { Title = L("选择要加密的文件夹"), Multiselect = false };
-        if (dialog.ShowDialog(this) == true) OpenSource(dialog.FolderName);
+        var dialog = new OpenFolderDialog { Title = L("选择要加密的文件夹"), Multiselect = true };
+        if (dialog.ShowDialog(this) == true) OpenSources(dialog.FolderNames, append: _screen == Screen.Encrypt);
     }
 
     private void OpenPackage_Click(object sender, RoutedEventArgs e)
@@ -540,7 +557,7 @@ public partial class MainWindow : Window
     private void TrackDrag(DragEventArgs e)
     {
         var (item, _) = AcceptsDrops ? Inspect(e.Data) : (Item.None, null);
-        e.Effects = item is Item.Source or Item.Package ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Effects = item is Item.Source or Item.Package or Item.Several ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
         if (item == _dragItem) return;
         _dragItem = item;
@@ -559,19 +576,30 @@ public partial class MainWindow : Window
     private void Window_Drop(object sender, DragEventArgs e)
     {
         e.Handled = true;
-        var (item, path) = AcceptsDrops ? Inspect(e.Data) : (Item.None, null);
+        var paths = AcceptsDrops ? DropPaths(e.Data) : [];
         _dragItem = Item.None;
         _dragPath = null;
         RenderDrop();
-        if (path is not null && item is Item.Source or Item.Package) _ = OpenAsync(path, item);
+        if (paths.Length > 0) AcceptPaths(paths);
+    }
+
+    private void AcceptPaths(IReadOnlyList<string> paths)
+    {
+        if (paths.Count == 0) return;
+        if (paths.Count > 1 || _screen == Screen.Encrypt) OpenSources(paths, append: _screen == Screen.Encrypt);
+        else _ = RouteAsync(paths[0]);
+    }
+
+    private static string[] DropPaths(IDataObject data)
+    {
+        try { return data.GetData(DataFormats.FileDrop) as string[] ?? []; }
+        catch (Exception error) when (error is COMException or InvalidOperationException) { return []; }
     }
 
     private (Item Item, string? Path) Inspect(IDataObject data)
     {
-        string[]? paths;
-        try { paths = data.GetData(DataFormats.FileDrop) as string[]; }
-        catch (Exception error) when (error is COMException or InvalidOperationException) { paths = null; }
-        if (paths is null || paths.Length == 0) return (Item.None, null);
+        var paths = DropPaths(data);
+        if (paths.Length == 0) return (Item.None, null);
         if (paths.Length > 1) return (Item.Several, null);
         if (paths[0] == _dragPath && _dragItem != Item.None) return (_dragItem, _dragPath);
         _dragPath = paths[0];
@@ -581,10 +609,10 @@ public partial class MainWindow : Window
     private void RenderDrop()
     {
         var active = _screen == Screen.Home && _dragItem != Item.None;
-        var accepted = active && _dragItem is Item.Source or Item.Package;
+        var accepted = active && _dragItem is Item.Source or Item.Package or Item.Several;
         DropTitle.Text = !active ? L("拖入文件或文件夹") : _dragItem switch
         {
-            Item.Several => L("一次只能放一项"),
+            Item.Several => L("松开，分别加密每一项"),
             Item.Package => L("松开，打开加密包"),
             Item.Source => L("松开，开始加密"),
             _ => L("拖入文件或文件夹"),
@@ -608,33 +636,82 @@ public partial class MainWindow : Window
             new DoubleAnimation(target, TimeSpan.FromMilliseconds(180)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
     }
 
-    private void OpenSource(string path)
+    private void OpenSource(string path) => OpenSources([path]);
+
+    private void OpenSources(IReadOnlyList<string> paths, bool append = false)
     {
-        _sourcePath = path;
-        _sourceSize = null;
-        var trimmed = Path.TrimEndingDirectorySeparator(path);
-        var parent = Path.GetDirectoryName(trimmed);
-        if (string.IsNullOrEmpty(parent)) parent = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-        var name = Path.GetFileName(trimmed);
-        Hide(EncryptNotice);
-        try { _outputPath = NextAvailablePackagePath(Path.Combine(parent, (string.IsNullOrEmpty(name) ? L("加密文件") : name) + ".protected.exe")); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+        try
         {
-            _outputPath = null;
-            ShowNotice(EncryptNotice, error);
+            var selected = (append ? _sourcePaths.Concat(paths) : paths)
+                .Select(path => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            if (selected.Length == 0) return;
+            // Keep disappeared inputs visible and removable. Creation performs the authoritative checks.
+            var parent = append && _outputPath is not null
+                ? IsBatch ? _outputPath : Path.GetDirectoryName(_outputPath)
+                : Path.GetDirectoryName(selected[0]);
+            if (string.IsNullOrEmpty(parent)) parent = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            // A selected parent and child are two separate packages. Keep their shared output outside both.
+            while (selected.Any(path => Directory.Exists(path) && IsWithin(parent, path)))
+            {
+                var outside = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(parent));
+                if (outside is null) break; // A drive root requires the user to choose another drive.
+                parent = outside;
+            }
+            var output = selected.Length > 1 ? parent
+                : append && !IsBatch && selected.SequenceEqual(_sourcePaths, StringComparer.OrdinalIgnoreCase) && _outputPath is not null
+                    ? _outputPath
+                    : NextAvailablePackagePath(Path.Combine(parent, DisplayName(selected[0]) + ".protected.exe"));
+            _sourcePaths = selected;
+            _sourceSize = null;
+            _outputPath = output;
+            Hide(EncryptNotice);
+            Show(Screen.Encrypt);
+            MeasureSources(selected);
         }
-        Show(Screen.Encrypt);
-        MeasureSource(path);
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or SecurityException)
+        {
+            ShowNotice(_screen == Screen.Encrypt ? EncryptNotice : HomeNotice, error);
+        }
     }
 
-    private async void MeasureSource(string path)
+    private static bool IsWithin(string path, string parent) => path.Equals(parent, StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith(Path.EndsInDirectorySeparator(parent) ? parent : parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+
+    private void RemoveSource(string path)
+    {
+        if (_busy) return;
+        var remaining = _sourcePaths.Where(item => !item.Equals(path, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (remaining.Length == 0) { GoHome(); return; }
+        var parent = IsBatch ? _outputPath : Path.GetDirectoryName(_outputPath);
+        OpenSources(remaining);
+        if (parent is not null)
+        {
+            _outputPath = IsBatch ? parent : NextAvailablePackagePath(Path.Combine(parent, DisplayName(remaining[0]) + ".protected.exe"));
+            RenderOutput();
+        }
+    }
+
+    private async void MeasureSources(string[] paths)
     {
         _measure?.Cancel();
         var measure = _measure = new CancellationTokenSource();
         try
         {
-            var size = await Task.Run(() => Measure(path, measure.Token), measure.Token);
-            if (!measure.IsCancellationRequested && _sourcePath == path)
+            var size = await Task.Run(() =>
+            {
+                int files = 0;
+                long bytes = 0;
+                foreach (var path in paths)
+                {
+                    measure.Token.ThrowIfCancellationRequested();
+                    var item = Measure(path, measure.Token);
+                    files += item.Files;
+                    bytes += item.Bytes;
+                }
+                return (Files: files, Bytes: bytes);
+            }, measure.Token);
+            if (!measure.IsCancellationRequested && ReferenceEquals(_sourcePaths, paths))
             {
                 _sourceSize = size;
                 RenderSource();
@@ -666,13 +743,28 @@ public partial class MainWindow : Window
     {
         if (_sourcePath is null) return;
         var folder = Directory.Exists(_sourcePath);
-        SourceGlyph.Text = folder ? "\uE8B7" : "\uE7C3";
-        SourceName.Text = DisplayName(_sourcePath);
-        SourceName.ToolTip = _sourcePath;
+        SourceGlyph.Text = IsBatch ? "\uE8FD" : folder ? "\uE8B7" : "\uE7C3";
+        SourceName.Text = IsBatch ? L("{0} 项 · 分别加密", _sourcePaths.Length) : DisplayName(_sourcePath);
+        SourceName.ToolTip = IsBatch ? null : _sourcePath;
         SourceMeta.Text = _sourceSize is not { } size ? " "
+            : IsBatch ? FileCount(size.Files, size.Bytes)
             : !folder ? FormatSize(size.Bytes)
             : size.Files == 0 ? L("空文件夹")
             : FileCount(size.Files, size.Bytes);
+        SourceList.Visibility = IsBatch ? Visibility.Visible : Visibility.Collapsed;
+        SourceItems.Children.Clear();
+        if (!IsBatch) return;
+        foreach (var path in _sourcePaths)
+        {
+            var row = new DockPanel { Margin = new Thickness(0, 3, 0, 3), ToolTip = path };
+            var remove = new Button { Content = L("移除"), Style = (Style)FindResource("LinkButton"), Margin = new Thickness(12, 0, 0, 0) };
+            AutomationProperties.SetName(remove, L("移除 {0}", DisplayName(path)));
+            remove.Click += (_, _) => RemoveSource(path);
+            DockPanel.SetDock(remove, Dock.Right);
+            row.Children.Add(remove);
+            row.Children.Add(new TextBlock { Text = DisplayName(path), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center });
+            SourceItems.Children.Add(row);
+        }
     }
 
     private void RenderOutput()
@@ -685,7 +777,8 @@ public partial class MainWindow : Window
         target.Inlines.Clear();
         target.ToolTip = path;
         if (path is null) return;
-        target.Inlines.Add(new Run(Path.GetFileName(path)));
+        var name = Path.GetFileName(path);
+        target.Inlines.Add(new Run(string.IsNullOrEmpty(name) ? path : name));
         var folder = Path.GetDirectoryName(path);
         if (string.IsNullOrEmpty(folder)) return;
         var location = new Run("   " + folder);
@@ -695,6 +788,18 @@ public partial class MainWindow : Window
 
     private void ChooseOutput_Click(object sender, RoutedEventArgs e)
     {
+        if (IsBatch)
+        {
+            var folderDialog = new OpenFolderDialog { Title = L("选择加密包的保存文件夹"), Multiselect = false };
+            if (_outputPath is not null && Directory.Exists(_outputPath)) folderDialog.InitialDirectory = _outputPath;
+            if (folderDialog.ShowDialog(this) == true)
+            {
+                _outputPath = folderDialog.FolderName;
+                Hide(EncryptNotice);
+                RenderOutput();
+            }
+            return;
+        }
         var dialog = new SaveFileDialog
         {
             Title = L("保存加密包"), Filter = L("加密包 (*.exe)|*.exe"), AddExtension = true, DefaultExt = ".exe", OverwritePrompt = false,
@@ -739,19 +844,26 @@ public partial class MainWindow : Window
             return;
         }
         var passwords = new List<string>();
-        CreateOptions options;
+        CreateOptions[] options;
         int redundancy;
         try
         {
-            if (!File.Exists(_sourcePath) && !Directory.Exists(_sourcePath)) throw new IOException(L("找不到此文件或文件夹。"));
             var output = _outputPath ?? throw new IOException(L("先选择保存位置。"));
-            if (PackageOutputCollision(output))
+            IReadOnlyList<BatchPackageItem> plan;
+            if (IsBatch) plan = BatchPackageService.Plan(_sourcePaths, output);
+            else
             {
-                output = _outputPath = NextAvailablePackagePath(output);
-                RenderOutput();
+                if (!File.Exists(_sourcePath) && !Directory.Exists(_sourcePath)) throw new IOException(L("找不到此文件或文件夹。"));
+                if (PackageOutputCollision(output))
+                {
+                    output = _outputPath = NextAvailablePackagePath(output);
+                    RenderOutput();
+                }
+                plan = [new BatchPackageItem(_sourcePath, output)];
             }
             foreach (var row in _rows) passwords.Add(row.Password.Password);
-            options = new CreateOptions(_sourcePath, output, passwords, SelectedCompression(), _stubOverride ?? CommandLine.StandaloneStub(), SelectedLayout());
+            var stub = _stubOverride ?? CommandLine.StandaloneStub();
+            options = plan.Select(item => new CreateOptions(item.SourcePath, item.OutputPath, passwords, SelectedCompression(), stub, SelectedLayout())).ToArray();
             redundancy = SelectedRecoveryPercent();
         }
         catch (Exception error)
@@ -763,16 +875,47 @@ public partial class MainWindow : Window
 
         BeginWork(Work.Encrypt);
         var token = _operation!.Token;
+        var completed = new List<PackageResult>();
+        var warnings = new List<string>();
+        _doneWithoutPassword = passwords.Any(password => password.Length == 0);
         try
         {
-            var (package, recoveryError) = await Task.Run(() => RecoveryService.CreateAsync(options, redundancy, PackageProgressSink(), RecoveryProgressSink(), token), token);
-            _doneWithoutPassword = passwords.Any(password => password.Length == 0);
+            for (var index = 0; index < options.Length; index++)
+            {
+                token.ThrowIfCancellationRequested();
+                Interlocked.Exchange(ref _latestProgress, null);
+                Interlocked.Exchange(ref _latestRecoveryProgress, null);
+                _stopwatch.Restart();
+                SetPercent(null);
+                WorkStage.Text = L("正在加密");
+                WorkDetail.Text = WorkPath.Text = " ";
+                WorkBatch.Visibility = options.Length > 1 ? Visibility.Visible : Visibility.Collapsed;
+                WorkBatch.Text = L("{0}/{1} · {2}", index + 1, options.Length, DisplayName(options[index].SourcePath));
+                WorkBatch.ToolTip = options[index].SourcePath;
+                var item = options[index];
+                var (package, recoveryError) = await Task.Run(() => RecoveryService.CreateAsync(item, redundancy, PackageProgressSink(), RecoveryProgressSink(), token), token);
+                completed.Add(package);
+                if (recoveryError is not null)
+                    warnings.Add(DisplayName(item.SourcePath) + ": " + L("恢复记录没有生成：{0}", DescribeException(recoveryError)));
+            }
             ClearPasswords();
-            var warning = recoveryError is null ? null : L("恢复记录没有生成：{0}", DescribeException(recoveryError));
-            if (EndWork()) ShowDone(package, warning, encrypted: true);
+            if (EndWork()) ShowBatchDone(completed, options.Length, warnings, []);
         }
-        catch (OperationCanceledException) { if (EndWork()) ReturnWithNotice(Screen.Encrypt, EncryptNotice, L("已取消"), neutral: true); }
-        catch (Exception error) { if (EndWork()) ReturnWithNotice(Screen.Encrypt, EncryptNotice, error); }
+        catch (Exception error)
+        {
+            if (completed.Count > 0)
+            {
+                var current = options[completed.Count].SourcePath;
+                warnings.Add(error is OperationCanceledException ? L("已取消") : DisplayName(current) + ": " + DescribeException(error));
+                ClearPasswords();
+                if (EndWork()) ShowBatchDone(completed, options.Length, warnings, options.Skip(completed.Count).Select(item => item.SourcePath).ToArray());
+            }
+            else if (EndWork())
+            {
+                if (error is OperationCanceledException) ReturnWithNotice(Screen.Encrypt, EncryptNotice, L("已取消"), neutral: true);
+                else ReturnWithNotice(Screen.Encrypt, EncryptNotice, error);
+            }
+        }
         finally { passwords.Clear(); }
     }
 
@@ -1278,6 +1421,7 @@ public partial class MainWindow : Window
         };
         SetPercent(null);
         WorkDetail.Text = WorkPath.Text = " ";
+        WorkBatch.Visibility = Visibility.Collapsed;
         CancelButton.IsEnabled = true;
         Render();
         _stopwatch.Restart();
@@ -1398,9 +1542,23 @@ public partial class MainWindow : Window
 
     private void ShowDone(PackageResult result, string? warning, bool encrypted)
     {
+        _donePackages = null;
+        _doneInterrupted = false;
         _doneResult = result;
         _doneWarning = warning;
         _doneEncrypted = encrypted;
+        Show(Screen.Done);
+    }
+
+    private void ShowBatchDone(IReadOnlyList<PackageResult> results, int planned, IReadOnlyList<string> warnings, string[] pending)
+    {
+        _donePackages = results;
+        _doneResult = results[0];
+        _donePlanned = planned;
+        _doneInterrupted = pending.Length > 0;
+        _pendingSources = pending;
+        _doneWarning = warnings.Count == 0 ? null : string.Join("\n", warnings);
+        _doneEncrypted = true;
         Show(Screen.Done);
     }
 
@@ -1408,16 +1566,23 @@ public partial class MainWindow : Window
     {
         if (_doneResult is not { } result) return;
         DoneFiles.Children.Clear();
+        DoneMark.Visibility = _doneInterrupted ? Visibility.Collapsed : Visibility.Visible;
         if (_doneEncrypted)
         {
-            DoneTitle.Text = L("加密完成");
-            AddDoneRow(Path.GetFileName(result.OutputPath), FormatSize(SizeOf(result.OutputPath)), result.OutputPath);
-            if (result.DataPath is { } data) AddDoneRow(Path.GetFileName(data), FormatSize(SizeOf(data)), data);
-            DoneHint.Text = DoneFiles.Children.Count > 1 ? L("两个文件要放在同一个文件夹里") : "";
+            var packages = _donePackages ?? [result];
+            DoneTitle.Text = _doneInterrupted ? L("已完成 {0}/{1} 个加密包", packages.Count, _donePlanned)
+                : packages.Count > 1 ? L("已生成 {0} 个加密包", packages.Count) : L("加密完成");
+            foreach (var package in packages)
+            {
+                AddDoneRow(Path.GetFileName(package.OutputPath), FormatSize(SizeOf(package.OutputPath)), package.OutputPath);
+                if (package.DataPath is { } data) AddDoneRow(Path.GetFileName(data), FormatSize(SizeOf(data)), data);
+            }
+            DoneHint.Text = packages.Any(package => package.IsDetached)
+                ? packages.Count > 1 ? L("每个 EXE 与同名 .2pw 放在一起") : L("两个文件要放在同一个文件夹里") : "";
             if (_doneWithoutPassword)
                 DoneHint.Text = L("无需密码，任何人都能解开") + (DoneHint.Text.Length == 0 ? "" : "\n" + DoneHint.Text);
             DonePrimary.Content = L("在文件夹中显示");
-            DoneSecondary.Content = L("完成");
+            DoneSecondary.Content = _doneInterrupted ? L("继续剩余项") : L("完成");
         }
         else
         {
@@ -1463,6 +1628,13 @@ public partial class MainWindow : Window
 
     private void DoneSecondary_Click(object sender, RoutedEventArgs e)
     {
+        if (_doneInterrupted && _pendingSources.Length > 0)
+        {
+            var folder = _doneResult is { } result ? Path.GetDirectoryName(result.OutputPath) : null;
+            OpenSources(_pendingSources);
+            if (folder is not null) UseTarget(IsBatch ? folder : Path.Combine(folder, DisplayName(_pendingSources[0]) + ".protected.exe"));
+            return;
+        }
         if (_embeddedPackage is not null && !_doneEncrypted) Close();
         else GoHome();
     }

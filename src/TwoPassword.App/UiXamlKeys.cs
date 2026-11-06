@@ -12,6 +12,8 @@ internal static class UiXamlKeys
         ["Ui.Close"] = "关闭",
         ["Ui.ChooseFile"] = "选择文件",
         ["Ui.ChooseFolder"] = "选择文件夹",
+        ["Ui.AddFiles"] = "+ 添加文件",
+        ["Ui.AddFolders"] = "+ 添加文件夹",
         ["Ui.OpenPackage"] = "打开加密包",
         ["Ui.Passwords"] = "密码",
         ["Ui.AnyOneOpens"] = "任意一个都能解开",

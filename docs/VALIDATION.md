@@ -4,6 +4,19 @@
 
 密码学假设、文件系统限制和威胁模型见 [SECURITY.md](SECURITY.md) / [SECURITY.en.md](SECURITY.en.md)。
 
+## 多选加密增量验证（2026-11-06）
+
+本次增加逐项独立打包和资源管理器多选入口，加密格式及单项创建流程保持兼容。完整核心回归 **218/218**、恢复测试 **32/32**、共享本地化 **15/15**、使用本次发布模板的 WPF 集成测试 **8/8**、独立 EXE/CLI **15/15** 通过；下方原有安装及大文件数据为此前验证记录，本次未重跑安装或大文件测试。
+
+- `BatchPackageTests.cs`：混合文件/文件夹各自独立还原、双密码、EXE/.2pw 配对、同名和长 Unicode 文件名、输出边界、规划后冲突、取消与失败清理。
+- `ExplorerSelectionBrokerTests.cs` / `GuiLaunchOptionsTests.cs`：完整选择与选项在提升权限时往返，32 个并发请求、初始化等待、用户/会话/程序副本隔离、异常消息和实例退出。
+- `TwoPassword.Gui.Tests`：真实 WPF Dispatcher 驱动多选启动、混合拖放、追加/去重/移除、已失效输入仍可编辑、独立解密和 SHA-256 对比、分离输出、后续项失败/取消保留成功包、继续剩余项不重复生成。默认使用合成 MZ 模板；传入 `--stub <发布版 EXE>` 可验证真实模板。测试不注册右键菜单或更改用户偏好。
+- 本次另以实际进程模拟 8 个并发 `--explorer-encrypt` 调用，覆盖混合路径、中文/空格/emoji、后续追加及去重，6 项检查通过；最终单进程单窗口保留全部选择。此项验证了菜单命令的接收链路，未实际点击资源管理器右键菜单。
+
+入口仍采用 Windows 传统菜单，`MultiSelectModel=Player` 默认上限为 100 项；更大的选择可经应用内对话框或拖放处理，见 [Microsoft 选择模型说明](https://learn.microsoft.com/en-us/windows/win32/shell/how-to-employ-the-verb-selection-model)。
+
+复现：`pwsh -File scripts/Test-Multiselect.ps1`。报告分别输出 `artifacts/test-results.json`、`artifacts/multiselect-results.json`；本次跨进程检查为 `artifacts/multiselect-explorer-qa/20261106-smoke-8c741e/results.json`。
+
 ## 环境与重现
 
 本地大文件验证环境：Windows `10.0.26300`、x64、.NET SDK `10.0.114`、运行时 `.NET 10.0.14`。发布流水线另在 GitHub 托管的 `windows-latest` 环境执行常规验证。
@@ -14,28 +27,30 @@ dotnet build 2Password.slnx -c Release --no-restore
 dotnet run --project tests/TwoPassword.Tests -c Release --no-build
 dotnet run --project tests/TwoPassword.Recovery.Tests -c Release --no-build
 dotnet run --project tests/TwoPassword.Localization.Tests -c Release --no-build
+dotnet run --project tests/TwoPassword.Gui.Tests -c Release --no-build
 pwsh -File scripts/Build-Release.ps1
 pwsh -File scripts/Test-Standalone.ps1
 pwsh -File scripts/Test-Installer.ps1
 ```
 
-`Build-Release.ps1` 默认包含前三个测试项目。`-SkipTests` 仅用于已验证后的本地重新打包，发布流水线不使用它。测试程序在失败时返回非零退出码；流水线会阻止发布。
+`Build-Release.ps1` 默认包含上述四个测试项目。`-SkipTests` 仅用于已验证后的本地重新打包，发布流水线不使用它。测试程序在失败时返回非零退出码；流水线会阻止发布。
 
 本轮 Release 构建为 0 警告、0 错误。对应常规验证结果：
 
 | 检查 | 通过 | 失败 |
 | --- | ---: | ---: |
-| 独立安全与文件往返 | 200 | 0 |
+| 独立安全与文件往返 | 218 | 0 |
+| 多选 WPF 界面与独立包还原 | 8 | 0 |
 | 真实 PAR2 与按需恢复 | 32 | 0 |
 | 共享语言资源与跨语言操作 | 15 | 0 |
 | 真实自包含 EXE / CLI | 15 | 0 |
-| 中文安装、英文替换与卸载 | 52 | 0 |
+| 中文安装、英文替换与卸载（此前基线） | 52 | 0 |
 
-共享语言验证覆盖 192 对资源和 192 个实际 `Text.Get` 源代码键；App 自有界面另有 152 对资源。
+共享语言验证覆盖 195 对资源和 195 个实际 `Text.Get` 源代码键；App 自有界面另有 163 对资源。
 
 ## 常规安全与还原验证
 
-主测试项目 `tests/TwoPassword.Tests` 共 **200 项，本轮本机复测全部通过，未跳过测试**。其重要覆盖包括：
+主测试项目 `tests/TwoPassword.Tests` 共 **218 项，本轮本机复测全部通过，未跳过测试**。其重要覆盖包括：
 
 | 范围 | 实际检查 |
 | --- | --- |
@@ -172,4 +187,4 @@ pwsh -File scripts/Test-LargeFiles.ps1
 
 ---
 
-**English overview.** The repository includes reproducible adversarial tests, real PAR2 recovery tests, localization checks, actual copied self-extractor execution, and install/upgrade/uninstall tests. The primary suite has 200 cases, including 22 workspace-permission regressions, and all pass locally without skipped tests. The 32 recovery cases cover packages whose trailer is zeroed or truncated, empty-password repair, and rejection of unsupported schemas before writeback. Local large-file cases processed 4,423,942,144-byte uncompressed data and an 8,589,934,715-byte PAX file, comparing full SHA-256 hashes after extraction. The approximately 394 MiB observed peak working set and timing figures describe these synthetic fixtures on one Windows host. Regular suites and installer/standalone checks gate GitHub Releases; large-file tests are available separately.
+**English overview.** The repository includes reproducible adversarial tests, real PAR2 recovery tests, localization checks, actual copied self-extractor execution, and install/upgrade/uninstall tests. The primary suite has 218 cases, including 22 workspace-permission regressions, and all pass locally without skipped tests. The 32 recovery cases cover packages whose trailer is zeroed or truncated, empty-password repair, and rejection of unsupported schemas before writeback. Local large-file cases processed 4,423,942,144-byte uncompressed data and an 8,589,934,715-byte PAX file, comparing full SHA-256 hashes after extraction. The approximately 394 MiB observed peak working set and timing figures describe these synthetic fixtures on one Windows host. Regular suites and installer/standalone checks gate GitHub Releases; large-file tests are available separately.

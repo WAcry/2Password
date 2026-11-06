@@ -85,6 +85,14 @@
                             </Grid>
                         </Border>
 
+                        <ScrollViewer x:Name="SourceList" MaxHeight="144" Margin="2,8,2,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="Collapsed">
+                            <StackPanel x:Name="SourceItems"/>
+                        </ScrollViewer>
+                        <WrapPanel Margin="2,10,2,0">
+                            <Button Style="{StaticResource LinkButton}" Content="{DynamicResource Ui.AddFiles}" Click="ChooseFile_Click" AutomationProperties.AutomationId="AddFiles"/>
+                            <Button Style="{StaticResource LinkButton}" Content="{DynamicResource Ui.AddFolders}" Margin="16,0,0,0" Click="ChooseFolder_Click" AutomationProperties.AutomationId="AddFolders"/>
+                        </WrapPanel>
+
                         <Grid Margin="2,28,2,10">
                             <TextBlock Text="{DynamicResource Ui.Passwords}" FontWeight="SemiBold"/>
                             <TextBlock x:Name="PasswordsHint" Text="{DynamicResource Ui.AnyOneOpens}" Style="{StaticResource Meta}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Visibility="Collapsed"/>
@@ -214,6 +222,7 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock x:Name="WorkStage" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="WorkBatch" Style="{StaticResource Meta}" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
                         <TextBlock x:Name="WorkPercent" Grid.Column="1" FontSize="15" Foreground="{DynamicResource Ink2}" Margin="16,0,0,0" Typography.NumeralAlignment="Tabular"/>
                     </Grid>
                     <ProgressBar x:Name="WorkProgress" Maximum="100" Margin="0,12,0,0" AutomationProperties.Name="{DynamicResource Ui.Progress}"/>
@@ -239,7 +248,7 @@
                         <Path Data="M 17.5,26.5 L 23.5,32.5 L 35,21" Stroke="{DynamicResource Success}" StrokeThickness="2.4"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
                     </Grid>
-                    <TextBlock x:Name="DoneTitle" Style="{StaticResource Heading}" HorizontalAlignment="Center" Margin="0,18,0,0"/>
+                    <TextBlock x:Name="DoneTitle" Style="{StaticResource Heading}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,18,0,0"/>
                     <Border Style="{StaticResource Tile}" Padding="0" Margin="0,24,0,0">
                         <StackPanel x:Name="DoneFiles"/>
                     </Border>

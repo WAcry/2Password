@@ -24,6 +24,8 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'PAR2 verification and real repair checks failed.' }
         dotnet run --project tests/TwoPassword.Localization.Tests -c Release --no-build
         if ($LASTEXITCODE -ne 0) { throw 'Localization and cross-language compatibility checks failed.' }
+        dotnet run --project tests/TwoPassword.Gui.Tests -c Release --no-build
+        if ($LASTEXITCODE -ne 0) { throw 'Multiselect GUI integration checks failed.' }
     }
     # RID and bundle properties are local to App.csproj, so they do not change the
     # referenced libraries' dependency graphs. Publishing is locked as well as building.
