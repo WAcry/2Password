@@ -18,6 +18,7 @@ $installExit = $null
 $uninstallExit = $null
 $upgradeExit = $null
 $attemptedInstall = $false
+$attemptedExplorerMenu = $false
 $productCode = $null
 $failure = $null
 $workspace = $null
@@ -97,6 +98,27 @@ function Same-PathIdentity($First, $Second) {
         $First.VolumeSerial -ceq $Second.VolumeSerial -and
         $First.FileId -ceq $Second.FileId
     )
+}
+
+$explorerVerbKeys = @(
+    'HKCU:\Software\Classes\*\shell\2Password',
+    'HKCU:\Software\Classes\Directory\shell\2Password',
+    'HKCU:\Software\Classes\SystemFileAssociations\.2pw\shell\2Password',
+    'HKCU:\Software\Classes\SystemFileAssociations\.par2\shell\2Password'
+)
+
+function Get-ExistingExplorerVerbs {
+    $explorerVerbKeys | Where-Object { Test-Path -LiteralPath $_ }
+}
+
+function Test-ExplorerVerbsTarget([string]$Executable) {
+    # Every verb command starts with the quoted executable path.
+    foreach ($key in $explorerVerbKeys) {
+        $command = Get-Item -LiteralPath "$key\command" -ErrorAction SilentlyContinue
+        $value = if ($command) { [string]$command.GetValue('') } else { '' }
+        if ($value -notmatch '^"([^"]+)"' -or -not (Same-Path $Matches[1] $Executable)) { return $false }
+    }
+    return $true
 }
 
 function Read-Package([string]$Path) {
@@ -377,6 +399,7 @@ namespace TwoPassword.InstallerSmoke {
     Assert-Check 'No existing application shortcut or registry settings will be overwritten' (
         -not (Test-Path -LiteralPath $menuDirectory) -and -not (Test-Path -LiteralPath $registryPath)
     )
+    Assert-Check 'No existing Explorer context-menu verbs will be overwritten' (@(Get-ExistingExplorerVerbs).Count -eq 0)
 
     $expectedFiles = [ordered]@{
         '2Password.exe' = (Join-Path $repo 'artifacts/publish/win-x64/2Password.exe')
@@ -466,6 +489,13 @@ namespace TwoPassword.InstallerSmoke {
         $keys.Installed -eq 1 -and $keys.Documentation -eq 1 -and $keys.StartMenu -eq 1 -and
         (Same-Path $keys.InstallLocation $installDirectory)
     )
+    $installedExe = Join-Path $installDirectory '2Password.exe'
+    $attemptedExplorerMenu = $true
+    $menuProcess = Start-Process -FilePath $installedExe -ArgumentList '--explorer-menu', 'on' -Wait -PassThru -NoNewWindow `
+        -RedirectStandardOutput (Join-Path $workspace 'explorer-menu-on.json')
+    Assert-Check 'Installed executable adds its Explorer context menu' (
+        $menuProcess.ExitCode -eq 0 -and (Test-ExplorerVerbsTarget $installedExe)
+    )
     $preservedFile = Join-Path $installDirectory 'user-data-must-survive.test.txt'
     [IO.File]::WriteAllText($preservedFile, 'Synthetic unowned user data. Preserve on uninstall.', [Text.UTF8Encoding]::new($false))
     $preservedHash = (Get-FileHash -LiteralPath $preservedFile -Algorithm SHA256).Hash
@@ -490,6 +520,7 @@ namespace TwoPassword.InstallerSmoke {
         Assert-Check 'Language switch preserves unowned user data' (
             (Get-FileHash -LiteralPath $preservedFile -Algorithm SHA256).Hash -eq $preservedHash
         )
+        Assert-Check 'Language switch keeps the Explorer context menu' (Test-ExplorerVerbsTarget $installedExe)
     }
 } catch {
     $failure = $_
@@ -521,6 +552,12 @@ namespace TwoPassword.InstallerSmoke {
                 }
             }
             Assert-Check 'Owned HKCU component values are removed' (-not $ownedValuesRemain)
+            if ($attemptedExplorerMenu) {
+                $leftoverVerbs = @(Get-ExistingExplorerVerbs)
+                # The pre-check proved none of these keys existed before the test.
+                foreach ($key in $leftoverVerbs) { Remove-Item -LiteralPath $key -Recurse -Force }
+                Assert-Check 'Uninstall removes the Explorer context menu' ($leftoverVerbs.Count -eq 0) ($leftoverVerbs -join ', ')
+            }
             if (Test-Path variable:preservedHash) {
                 Assert-Check 'Uninstall preserves unowned user data' (
                     (Test-Path -LiteralPath $preservedFile -PathType Leaf) -and

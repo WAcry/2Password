@@ -65,7 +65,7 @@ internal static class UiText
     {
         FileNotFoundException missing => L("找不到文件：{0}", missing.FileName ?? ""),
         DirectoryNotFoundException => L("找不到文件夹。"),
-        UnauthorizedAccessException => L("没有权限访问这个位置。"),
+        _ when Elevation.IsAccessDenied(error) => L("没有权限访问这个位置。"),
         PathTooLongException => L("路径太长，换一个短一些的位置。"),
         OutOfMemoryException => L("内存不足。关掉一些程序再试。"),
         CryptographicException => L("密码不正确，或加密包已损坏。"),

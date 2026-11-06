@@ -139,7 +139,7 @@ Reference-record magic is `2PWLHDR2`; reference-footer magic is `2PWLINK2`. Othe
 
 The filename must be a single valid Windows filename ending in `.2pw`, at most 255 UTF-16 code units and 1024 UTF-8 bytes. Absolute paths, separators, traversal, device names, ADS syntax, invalid Unicode and reparse-point parents are rejected. The reader checks the expected header hash before attempting password derivation. References cannot chain recursively. A dataset can also be opened directly without its launcher.
 
-Creation publishes a completed dataset first and its launcher last, with no overwrites. A failure removes only temporary/newly published files owned by that operation. This is a two-file publication protocol, not a filesystem-wide transaction. A crash between the two renames may leave an orphaned encrypted dataset.
+Creation publishes a completed dataset first and its launcher last, with no overwrites. A failure removes only temporary/newly published files owned by that operation. A crash between the two renames can leave an orphaned encrypted dataset.
 
 ## Filesystem and archive invariants
 
@@ -158,13 +158,13 @@ PAX fields used by the application:
 
 The framing guard limits each PAX metadata record to 256 KiB and 64 unique fields before the BCL archive reader can allocate from untrusted lengths. Only standard PAX regular-file/directory entries are accepted. The guard enforces the authenticated file-byte budget and exactly two TAR zero terminator blocks.
 
-Source scanning includes all entries and fails on inaccessible entries. Files are opened with `FileShare.Read`, which excludes concurrent writes and deletes while being copied. A before/after inventory check detects changed names, sizes, timestamps, attributes and Zone.Identifier contents. This is not a VSS snapshot and cannot prove an atomic multi-file snapshot under adversarial same-user changes.
+Source scanning includes all entries and fails on inaccessible entries. Files are opened with `FileShare.Read`, which excludes concurrent writes and deletes while being copied. A before/after inventory check detects changed names, sizes, timestamps, attributes and Zone.Identifier contents. There is no VSS snapshot, so a same-user process racing these checks can still produce an inconsistent multi-file archive.
 
 Extraction rejects traversal, absolute paths, invalid/device names, duplicate paths, case-insensitive collisions, missing parents, unsupported types, oversized metadata and inconsistent authenticated totals. It creates only new files beneath a private random staging directory in the destination's parent, authenticates the whole stream, restores metadata, then performs a no-overwrite directory rename.
 
 Before creating staging, the shared `WindowsPrivateDirectory` helper opens the existing parent and requires its actual volume to report `FILE_PERSISTENT_ACLS`. An unavailable capability query or a volume without persistent ACLs fails before any plaintext files are written. Native `CreateDirectoryW` supplies the protected DACL atomically and rejects an existing path. The helper reads back the raw security descriptor and requires the current user as owner, a protected present DACL, and exactly the distinct current-user/SYSTEM Allow FullControl ACEs with object/container inheritance and no additional ACEs. A validation failure attempts to remove only the newly created empty directory, never an unexpected tree. PAR2 workspaces use the same helper.
 
-Local NTFS is the validated destination. FAT32 and exFAT cannot be extraction or recovery workspace destinations because they lack persistent ACLs. A network filesystem is accepted only if its provider can report the required capability and preserve the exact verified DACL; generic SMB/NAS compatibility is not promised. Source stream enumeration treats EOF normally, but errors 1/50/87 are considered absence of stream support only after a successful volume query confirms that `FILE_NAMED_STREAMS` is absent. A query failure or a provider claiming streams but refusing enumeration fails explicitly. These checks use the documented [volume capability flags](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getvolumeinformationbyhandlew).
+Local NTFS is the validated destination. FAT32 and exFAT cannot be extraction or recovery workspace destinations because they lack persistent ACLs. A network filesystem is accepted only if its provider can report the required capability and preserve the exact verified DACL. Source stream enumeration treats EOF normally, but errors 1/50/87 are considered absence of stream support only after a successful volume query confirms that `FILE_NAMED_STREAMS` is absent. A query failure or a provider claiming streams but refusing enumeration fails explicitly. These checks use the documented [volume capability flags](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getvolumeinformationbyhandlew).
 
 The staging/final directory retains that private ACL. Original ACLs, owners, EFS identity, hard-link relationships, NTFS compression/sparsity and non-Zone ADS are not reproduced. Sparse input bytes are retained exactly, but restored files may occupy their full logical size.
 
@@ -178,5 +178,5 @@ The staging/final directory retains that private ACL. Original ACLs, owners, EFS
 - Self-contained EXE maximum: 4,294,967,295 bytes. Large encrypted data uses detached layout.
 - Encoding, encryption, decoding, copying and hashing are streamed. Temporary payloads are encrypted. Embedded assembly requires a second encrypted copy temporarily.
 - Destination files/directories are never overwritten.
-- Normal failure/cancellation cleans temporary output. Forced process termination or power loss can leave a private staging directory or encrypted temporary file; no secure-erasure claim is made.
-- A compromised same-user process, malicious EXE stub, keylogger, memory dump or replaced executable is outside the data-encryption threat model. AEAD authenticates the encrypted dataset, not the executable stub. Application signing and trusted distribution are separate concerns.
+- Normal failure/cancellation cleans temporary output with ordinary deletion. Forced process termination or power loss can leave a private staging directory or encrypted temporary file.
+- A compromised same-user process, malicious EXE stub, keylogger, memory dump or replaced executable is outside the data-encryption threat model. AEAD authenticates the encrypted dataset only; trust in the executable stub comes from signing and distribution.

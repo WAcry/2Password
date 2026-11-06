@@ -52,6 +52,15 @@
       <ComponentRef Id="StartMenu" />
     </Feature>
 
+    <!-- The app writes its Explorer verbs itself, so only the app knows whether they point at this copy.
+         Upgrades and language swaps keep them: the replacement installs the same path. -->
+    <CustomAction Id="RemoveExplorerMenu" FileRef="MainExe" ExeCommand="--explorer-menu off"
+                  Execute="deferred" Impersonate="yes" Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="RemoveExplorerMenu" Before="RemoveFiles"
+              Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
     <WixVariable Id="WixUILicenseRtf" Value="$(var.RepoRoot)\installer\Welcome.rtf" />
     <UI>

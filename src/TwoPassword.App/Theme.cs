@@ -14,6 +14,7 @@ internal static class Theme
     private static bool? _dark;
 
     internal static bool IsDark => _dark == true;
+    internal static string? Forced => _forced;
 
     internal static void Initialize(string[] arguments)
     {

@@ -37,6 +37,8 @@ public partial class MainWindow : Window
     private readonly string? _embeddedPackage;
     private readonly string? _stubOverride;
     private readonly string? _initialPath;
+    private readonly bool _initialEncrypt;
+    private readonly string? _initialTarget;
     private readonly List<PasswordRow> _rows = [];
     private readonly DispatcherTimer _progressTimer;
     private readonly DispatcherTimer _revealTimer;
@@ -76,11 +78,14 @@ public partial class MainWindow : Window
     private string? _doneWarning;
     private bool _doneEncrypted;
 
-    public MainWindow(string? embeddedPackage = null, string? stubOverride = null, string? initialPath = null)
+    /// <param name="initialTarget">Save location for <paramref name="initialPath"/>, or the restore location when it is a package.</param>
+    public MainWindow(string? embeddedPackage = null, string? stubOverride = null, string? initialPath = null, bool initialEncrypt = false, string? initialTarget = null)
     {
         _embeddedPackage = embeddedPackage;
         _stubOverride = stubOverride;
         _initialPath = initialPath;
+        _initialEncrypt = initialEncrypt;
+        _initialTarget = initialTarget;
         InitializeComponent();
         var area = SystemParameters.WorkArea;
         Width = Math.Min(Width, area.Width - 24);
@@ -130,11 +135,54 @@ public partial class MainWindow : Window
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_embeddedPackage is not null) await InspectPackageAsync(_embeddedPackage);
-        else if (!string.IsNullOrWhiteSpace(_initialPath)) await RouteAsync(_initialPath);
+        if (Elevation.IsElevated && _embeddedPackage is null) Elevation.AcceptShellDrops(this, ShellDrop);
+        if (_embeddedPackage is not null)
+        {
+            if (_initialTarget is not null) UseTarget(_initialTarget);
+            await InspectPackageAsync(_embeddedPackage);
+        }
+        else if (!string.IsNullOrWhiteSpace(_initialPath))
+        {
+            await RouteAsync(_initialPath, encrypt: _initialEncrypt);
+            if (_initialTarget is not null) UseTarget(_initialTarget);
+        }
     }
 
-    private void Window_SourceInitialized(object? sender, EventArgs e) => Theme.ApplyFrame(this);
+    private void UseTarget(string target)
+    {
+        try
+        {
+            var full = Path.GetFullPath(target);
+            if (_screen == Screen.Encrypt && _sourcePath is not null)
+            {
+                _outputPath = NextAvailablePackagePath(full);
+                RenderOutput();
+            }
+            else if (_screen == Screen.Unlock && _packagePath is not null)
+            {
+                _destinationPath = NextAvailablePath(full, directory: true);
+                RenderUnlock();
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { }
+    }
+
+    private void Window_SourceInitialized(object? sender, EventArgs e)
+    {
+        Theme.ApplyFrame(this);
+    }
+
+    private void ShellDrop(string[] paths)
+    {
+        if (!AcceptsDrops || paths.Length == 0) return;
+        if (paths.Length > 1)
+        {
+            if (_screen == Screen.Home) ShowNotice(HomeNotice, L("一次只能放一项"));
+            return;
+        }
+        var item = Classify(paths[0]);
+        if (item is Item.Source or Item.Package or Item.Recovery) _ = OpenAsync(paths[0], item);
+    }
 
     private void Window_StateChanged(object? sender, EventArgs e)
     {
@@ -207,7 +255,9 @@ public partial class MainWindow : Window
         BackButton.Visibility = CanGoBack ? Visibility.Visible : Visibility.Collapsed;
         WindowCaption.Margin = new Thickness(CanGoBack ? 6 : 16, 0, 0, 0);
         MenuButton.IsEnabled = !_busy;
-        Title = _embeddedPackage is null ? "2Password" : Path.GetFileName(_embeddedPackage) + " · 2Password";
+        var caption = Elevation.IsElevated ? "2Password · " + L("管理员") : "2Password";
+        WindowCaption.Text = caption;
+        Title = _embeddedPackage is null ? caption : Path.GetFileName(_embeddedPackage) + " · " + caption;
         switch (_screen)
         {
             case Screen.Home: RenderDrop(); break;
@@ -268,7 +318,7 @@ public partial class MainWindow : Window
         Show(Screen.Home);
     }
 
-    private async Task RouteAsync(string path, bool packagesOnly = false)
+    private async Task RouteAsync(string path, bool packagesOnly = false, bool encrypt = false)
     {
         string full;
         try { full = Path.GetFullPath(path); }
@@ -278,6 +328,7 @@ public partial class MainWindow : Window
             return;
         }
         var item = Classify(full);
+        if (encrypt && item is Item.Package or Item.Recovery) item = Item.Source;
         if (packagesOnly && item == Item.Source) ShowNotice(HomeNotice, L("这个文件不是 2Password 加密包。"));
         else await OpenAsync(full, item);
     }
@@ -324,9 +375,74 @@ public partial class MainWindow : Window
         menu.Items.Add(new Separator());
         menu.Items.Add(MenuEntry(L("修复加密包…"), "MenuRepair", ChooseRecovery));
         menu.Items.Add(MenuEntry(L("开源许可"), "MenuLicenses", ShowNotices));
+        var explorer = _embeddedPackage is null && Environment.ProcessPath is not null;
+        if (explorer || !Elevation.IsElevated) menu.Items.Add(new Separator());
+        if (explorer)
+        {
+            var item = MenuEntry(L("显示在右键菜单"), "MenuExplorer", ToggleExplorerMenu);
+            item.IsChecked = ExplorerMenuEnabled();
+            menu.Items.Add(item);
+        }
+        if (!Elevation.IsElevated)
+        {
+            var item = MenuEntry(L("以管理员身份运行"), "MenuElevate", RunElevated);
+            if (Elevation.Shield is { } shield) item.Icon = new Image { Source = shield, Width = 16, Height = 16 };
+            menu.Items.Add(item);
+        }
         menu.Items.Add(new Separator());
         menu.Items.Add(new MenuItem { Header = L("版本 {0}", Version), IsEnabled = false });
         menu.IsOpen = true;
+    }
+
+    private static bool ExplorerMenuEnabled()
+    {
+        try { return Environment.ProcessPath is { } executable && ExplorerMenu.IsEnabled(executable); }
+        catch (Exception error) when (error is SecurityException or UnauthorizedAccessException or IOException) { return false; }
+    }
+
+    private void ToggleExplorerMenu()
+    {
+        if (Environment.ProcessPath is not { } executable) return;
+        try
+        {
+            if (ExplorerMenu.IsEnabled(executable)) ExplorerMenu.Disable(executable);
+            else ExplorerMenu.Enable(executable);
+        }
+        catch (Exception error) when (error is SecurityException or UnauthorizedAccessException or IOException)
+        {
+            MessageBox.Show(this, DescribeException(error), "2Password", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>Reopens elevated on the same item and locations. Passwords stay behind and are typed again.</summary>
+    private void RunElevated()
+    {
+        if (_busy) return;
+        var arguments = new List<string> { "--language", UiText.Language };
+        if (Theme.Forced is { } theme) arguments.AddRange(["--theme", theme]);
+        if (_stubOverride is not null) arguments.AddRange(["--stub", _stubOverride]);
+        switch (_screen)
+        {
+            case Screen.Encrypt when _sourcePath is not null:
+                arguments.AddRange(["--encrypt", _sourcePath]);
+                if (_outputPath is not null) arguments.AddRange(["--target", _outputPath]);
+                break;
+            case Screen.Unlock when _packagePath is not null:
+                if (_embeddedPackage is null) arguments.Add(_packagePath);
+                if (_destinationPath is not null) arguments.AddRange(["--target", _destinationPath]);
+                break;
+            case Screen.Repair when _recoveryPath is not null && _embeddedPackage is null:
+                arguments.Add(_recoveryPath);
+                break;
+        }
+        try
+        {
+            if (Elevation.Restart(arguments)) Close();
+        }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException)
+        {
+            MessageBox.Show(this, DescribeException(error), "2Password", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private MenuItem LanguageItem(string label, string language)
@@ -356,6 +472,11 @@ public partial class MainWindow : Window
         Render();
         try { UiText.SaveLanguage(); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        try
+        {
+            if (_embeddedPackage is null && Environment.ProcessPath is { } executable && ExplorerMenu.IsEnabled(executable)) ExplorerMenu.Enable(executable);
+        }
+        catch (Exception error) when (error is SecurityException or UnauthorizedAccessException or IOException) { }
     }
 
     private bool AcceptsDrops => !_busy && _embeddedPackage is null;
@@ -632,7 +753,7 @@ public partial class MainWindow : Window
             if (EndWork()) ShowDone(package, recovery, warning, encrypted: true);
         }
         catch (OperationCanceledException) { if (EndWork()) ReturnWithNotice(Screen.Encrypt, EncryptNotice, L("已取消"), neutral: true); }
-        catch (Exception error) { if (EndWork()) ReturnWithNotice(Screen.Encrypt, EncryptNotice, DescribeException(error)); }
+        catch (Exception error) { if (EndWork()) ReturnWithNotice(Screen.Encrypt, EncryptNotice, error); }
         finally { passwords.Clear(); }
     }
 
@@ -1032,7 +1153,7 @@ public partial class MainWindow : Window
             Shake(UnlockPassword);
         }
         catch (OperationCanceledException) { if (EndWork()) ReturnWithNotice(Screen.Unlock, UnlockNotice, L("已取消"), neutral: true); }
-        catch (Exception error) { if (EndWork()) ReturnWithNotice(Screen.Unlock, UnlockNotice, DescribeException(error)); }
+        catch (Exception error) { if (EndWork()) ReturnWithNotice(Screen.Unlock, UnlockNotice, error); }
     }
 
     private void ChooseRecovery()
@@ -1128,7 +1249,7 @@ public partial class MainWindow : Window
             Show(Screen.Repair);
         }
         catch (OperationCanceledException) { if (EndWork()) ReturnWithNotice(Screen.Repair, RepairNotice, L("已取消"), neutral: true); }
-        catch (Exception error) { if (EndWork()) ReturnWithNotice(Screen.Repair, RepairNotice, DescribeException(error)); }
+        catch (Exception error) { if (EndWork()) ReturnWithNotice(Screen.Repair, RepairNotice, error); }
     }
 
     private void BeginWork(Work work)
@@ -1176,6 +1297,12 @@ public partial class MainWindow : Window
     {
         Show(screen);
         ShowNotice(notice, message, neutral);
+    }
+
+    private void ReturnWithNotice(Screen screen, TextBlock notice, Exception error)
+    {
+        Show(screen);
+        ShowNotice(notice, error);
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
@@ -1402,7 +1529,20 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
-    private static void ShowNotice(TextBlock target, Exception error) => ShowNotice(target, DescribeException(error));
+    private void ShowNotice(TextBlock target, Exception error)
+    {
+        ShowNotice(target, DescribeException(error));
+        if (Elevation.IsElevated || !Elevation.IsAccessDenied(error)) return;
+        var retry = new Hyperlink { TextDecorations = TextDecorations.Underline, Cursor = Cursors.Hand };
+        retry.SetResourceReference(TextElement.ForegroundProperty, "Ink");
+        if (Elevation.Shield is { } shield)
+            retry.Inlines.Add(new InlineUIContainer(new Image { Source = shield, Width = 14, Height = 14, Margin = new Thickness(0, 0, 4, -2) }));
+        retry.Inlines.Add(new Run(L("以管理员身份重试")));
+        AutomationProperties.SetAutomationId(retry, "RetryElevated");
+        retry.Click += (_, _) => RunElevated();
+        target.Inlines.Add(new Run("  "));
+        target.Inlines.Add(retry);
+    }
 
     private static void ShowNotice(TextBlock target, string message, bool neutral = false)
     {

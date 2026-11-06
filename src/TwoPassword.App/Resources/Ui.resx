@@ -40,6 +40,7 @@
   --verify-recovery &lt;par2&gt; [--report &lt;new.json&gt;]
   --repair-recovery &lt;par2&gt; [--report &lt;new.json&gt;]
   --export-recovery-source &lt;new.tar.xz&gt; [--report &lt;new.json&gt;]
+  --explorer-menu on|off    Add or remove 2Password in the Explorer right-click menu.
   --language en|zh-CN    Optional for every operation, including --help.
 
 Passwords are accepted only through redirected standard input, encoded as strict UTF-8 without BOM detection.
@@ -54,6 +55,9 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   </data>
   <data name="Choose exactly one operation." xml:space="preserve">
     <value>Choose exactly one operation.</value>
+  </data>
+  <data name="Unsupported argument: {0}" xml:space="preserve">
+    <value>Unsupported argument: {0}</value>
   </data>
   <data name="Use --password-stdin; passwords are never accepted as command-line arguments." xml:space="preserve">
     <value>Use --password-stdin; passwords are never accepted as command-line arguments.</value>
@@ -97,14 +101,23 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   <data name="Missing value for {0}" xml:space="preserve">
     <value>Missing value for {0}</value>
   </data>
-  <data name="Unsupported argument: {0}" xml:space="preserve">
-    <value>Unsupported argument: {0}</value>
-  </data>
   <data name="Missing {0}" xml:space="preserve">
     <value>Missing {0}</value>
   </data>
   <data name="Password input exceeds the supported limit." xml:space="preserve">
     <value>Password input exceeds the supported limit.</value>
+  </data>
+  <data name="用 2Password 加密" xml:space="preserve">
+    <value>Encrypt with 2Password</value>
+  </data>
+  <data name="用 2Password 解密" xml:space="preserve">
+    <value>Decrypt with 2Password</value>
+  </data>
+  <data name="用 2Password 修复" xml:space="preserve">
+    <value>Repair with 2Password</value>
+  </data>
+  <data name="一次只能放一项" xml:space="preserve">
+    <value>One item at a time</value>
   </data>
   <data name="还原" xml:space="preserve">
     <value>Restore</value>
@@ -114,6 +127,9 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   </data>
   <data name="正在处理文件。取消并关闭？" xml:space="preserve">
     <value>Still working. Cancel and close?</value>
+  </data>
+  <data name="管理员" xml:space="preserve">
+    <value>Administrator</value>
   </data>
   <data name="这个文件不是 2Password 加密包。" xml:space="preserve">
     <value>This file is not a 2Password package.</value>
@@ -126,6 +142,12 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   </data>
   <data name="开源许可" xml:space="preserve">
     <value>Open-source licenses</value>
+  </data>
+  <data name="显示在右键菜单" xml:space="preserve">
+    <value>Show in right-click menu</value>
+  </data>
+  <data name="以管理员身份运行" xml:space="preserve">
+    <value>Run as administrator</value>
   </data>
   <data name="版本 {0}" xml:space="preserve">
     <value>Version {0}</value>
@@ -147,9 +169,6 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   </data>
   <data name="拖入文件或文件夹" xml:space="preserve">
     <value>Drop a file or folder here</value>
-  </data>
-  <data name="一次只能放一项" xml:space="preserve">
-    <value>One item at a time</value>
   </data>
   <data name="松开，打开加密包" xml:space="preserve">
     <value>Release to open</value>
@@ -342,6 +361,9 @@ Recovery exit status: 0 = healthy/success, 1 = repairable, 2 = insufficient reco
   </data>
   <data name="已导出：{0}" xml:space="preserve">
     <value>Exported: {0}</value>
+  </data>
+  <data name="以管理员身份重试" xml:space="preserve">
+    <value>Retry as administrator</value>
   </data>
   <data name="1 个文件 · {0}" xml:space="preserve">
     <value>1 file · {0}</value>

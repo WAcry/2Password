@@ -32,13 +32,16 @@ public partial class App : Application
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
         Theme.Initialize(e.Args);
-        string? external = null;
+        string? external = null, target = null;
+        var encrypt = false;
         for (var index = 0; index < e.Args.Length; index++)
         {
             if (e.Args[index] is "--stub" or "--language" or "--theme") { index++; continue; }
-            if (!e.Args[index].StartsWith("--", StringComparison.Ordinal)) { external = e.Args[index]; break; }
+            if (e.Args[index] == "--target" && index + 1 < e.Args.Length) { target = e.Args[++index]; continue; }
+            if (e.Args[index] == "--encrypt" && index + 1 < e.Args.Length) { encrypt = true; external ??= e.Args[++index]; continue; }
+            if (!e.Args[index].StartsWith("--", StringComparison.Ordinal)) external ??= e.Args[index];
         }
-        MainWindow = new MainWindow(embedded ? processPath : null, stubOverride, embedded ? null : external);
+        MainWindow = new MainWindow(embedded ? processPath : null, stubOverride, embedded ? null : external, encrypt && !embedded, target);
         ShutdownMode = ShutdownMode.OnMainWindowClose;
         MainWindow.Show();
     }
@@ -47,7 +50,7 @@ public partial class App : Application
 internal static class CommandLine
 {
     private static readonly HashSet<string> Commands =
-        ["--inspect", "--inspect-self", "--extract", "--extract-self", "--create", "--verify-recovery", "--repair-recovery", "--export-recovery-source", "--help", "-h"];
+        ["--inspect", "--inspect-self", "--extract", "--extract-self", "--create", "--verify-recovery", "--repair-recovery", "--export-recovery-source", "--explorer-menu", "--help", "-h"];
     internal static bool IsCommand(string[] args) => args.Any(Commands.Contains);
 
     internal static async Task<int> RunAsync(string[] args)
@@ -115,6 +118,15 @@ internal static class CommandLine
                     : await RecoveryService.VerifyAsync(Required(options, "--verify-recovery"), cancellationToken: cancellation.Token);
                 await ReportAsync(reportStream, new { success = recoveryResult.Success, operation, result = recoveryResult });
                 return recoveryResult.ExitCode;
+            }
+            else if (options.TryGetValue("--explorer-menu", out var menuState))
+            {
+                operation = "explorer-menu";
+                var executable = ProcessPath();
+                if (menuState == "on") ExplorerMenu.Enable(executable);
+                else if (menuState == "off") ExplorerMenu.Disable(executable);
+                else throw new ArgumentException(L("Unsupported argument: {0}", "--explorer-menu " + menuState));
+                result = new { Enabled = ExplorerMenu.IsEnabled(executable), Executable = executable };
             }
             else if (options.ContainsKey("--export-recovery-source"))
             {
@@ -206,7 +218,7 @@ internal static class CommandLine
     private static Dictionary<string, string?> Parse(string[] args)
     {
         HashSet<string> flags = ["--inspect-self", "--extract-self", "--password-stdin", "--passwords-stdin", "--verify-first", "--help", "-h"];
-        HashSet<string> values = ["--inspect", "--extract", "--create", "--output", "--report", "--compression", "--layout", "--recovery-percent", "--stub", "--verify-recovery", "--repair-recovery", "--export-recovery-source", "--language", "--theme"];
+        HashSet<string> values = ["--inspect", "--extract", "--create", "--output", "--report", "--compression", "--layout", "--recovery-percent", "--stub", "--verify-recovery", "--repair-recovery", "--export-recovery-source", "--explorer-menu", "--language", "--theme"];
         var result = new Dictionary<string, string?>(StringComparer.Ordinal);
         for (var i = 0; i < args.Length; i++)
         {
